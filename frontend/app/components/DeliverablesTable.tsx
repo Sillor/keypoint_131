@@ -1,7 +1,6 @@
 import React from 'react';
-import TableCell from './TableCell';
-import SortAscIcon from './SortAscIcon';
-import SortDescIcon from './SortDescIcon';
+import { useRouter } from 'next/navigation';
+import Table from './Table';
 
 interface Deliverable {
   id: number;
@@ -14,14 +13,9 @@ interface Deliverable {
   status: string;
 }
 
-interface SortConfig {
-  key: keyof Deliverable | '';
-  direction: 'asc' | 'desc';
-}
-
 interface DeliverablesTableProps {
   data: Deliverable[];
-  sortConfig: SortConfig;
+  sortConfig: { key: keyof Deliverable | ''; direction: 'asc' | 'desc' };
   onSort: (key: keyof Deliverable) => void;
 }
 
@@ -30,7 +24,9 @@ const DeliverablesTable: React.FC<DeliverablesTableProps> = ({
   sortConfig,
   onSort,
 }) => {
-  const headers = [
+  const router = useRouter();
+
+  const headers: { key: keyof Deliverable; label: string }[] = [
     { key: 'id', label: 'No.' },
     { key: 'name', label: 'Deliverable' },
     { key: 'category', label: 'Category / Project' },
@@ -41,49 +37,19 @@ const DeliverablesTable: React.FC<DeliverablesTableProps> = ({
     { key: 'status', label: 'Status' },
   ];
 
-  const renderSortIcon = (key: keyof Deliverable) => {
-    if (sortConfig.key !== key) return null;
-    return sortConfig.direction === 'asc' ? <SortAscIcon /> : <SortDescIcon />;
+  const handleRowClick = (id: string | number) => {
+    router.push(`./deliverables/${id}`);
   };
 
   return (
-    <div className="overflow-hidden rounded-lg">
-      {/* Scrollable container with hidden scrollbar */}
-      <div className="overflow-x-auto max-h-[500px] scrollbar-hide">
-        <table className="w-full text-left border-collapse bg-white">
-          <thead className="sticky top-0 bg-gray-800 text-white">
-            <tr>
-              {headers.map((header) => (
-                <th
-                  key={header.key}
-                  className="px-6 py-3 text-sm font-semibold cursor-pointer select-none"
-                  onClick={() => onSort(header.key as keyof Deliverable)}
-                >
-                  <div className="flex items-center justify-start gap-2">
-                    <span>{header.label}</span>
-                    {renderSortIcon(header.key as keyof Deliverable)}
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((row) => (
-              <tr key={row.id} className="border-b">
-                <TableCell>{row.id}</TableCell>
-                <TableCell>{row.name}</TableCell>
-                <TableCell>{row.category}</TableCell>
-                <TableCell>{row.startDate}</TableCell>
-                <TableCell>{row.endDate}</TableCell>
-                <TableCell>{row.timeSpent}</TableCell>
-                <TableCell>{row.progress}</TableCell>
-                <TableCell>{row.status}</TableCell>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <Table
+      data={data}
+      headers={headers}
+      sortConfig={sortConfig}
+      onSort={onSort}
+      clickable={true}
+      onRowClick={handleRowClick}
+    />
   );
 };
 
