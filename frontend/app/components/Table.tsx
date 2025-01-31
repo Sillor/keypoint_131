@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import TableCell from './TableCell';
 import SortAscIcon from './SortAscIcon';
 import SortDescIcon from './SortDescIcon';
@@ -15,6 +15,8 @@ interface TableProps<T> {
   onSort: (key: keyof T) => void;
   clickable?: boolean;
   onRowClick?: (id: number | string) => void;
+  editableRows?: (id: number | string) => boolean; // Function to determine if a row is editable
+  onEdit?: (id: number | string, key: keyof T, value: any) => void; // Callback for editing
 }
 
 const Table = <T extends { id: number | string }>({
@@ -24,6 +26,8 @@ const Table = <T extends { id: number | string }>({
   onSort,
   clickable = false,
   onRowClick,
+  editableRows = () => false,
+  onEdit,
 }: TableProps<T>) => {
   const renderSortIcon = (key: keyof T) => {
     if (sortConfig.key !== key) return null;
@@ -33,6 +37,12 @@ const Table = <T extends { id: number | string }>({
   const handleRowClick = (id: number | string) => {
     if (clickable && onRowClick) {
       onRowClick(id);
+    }
+  };
+
+  const handleEdit = (id: number | string, key: keyof T, value: any) => {
+    if (onEdit) {
+      onEdit(id, key, value);
     }
   };
 
@@ -67,7 +77,18 @@ const Table = <T extends { id: number | string }>({
               >
                 {headers.map((header) => (
                   <TableCell key={String(header.key)}>
-                    {row[header.key] as React.ReactNode}
+                    {editableRows(row.id) ? (
+                      <input
+                        type="text"
+                        value={row[header.key] as string}
+                        onChange={(e) =>
+                          handleEdit(row.id, header.key, e.target.value)
+                        }
+                        className="w-full border border-gray-300 rounded p-1"
+                      />
+                    ) : (
+                      (row[header.key] as React.ReactNode)
+                    )}
                   </TableCell>
                 ))}
               </tr>
