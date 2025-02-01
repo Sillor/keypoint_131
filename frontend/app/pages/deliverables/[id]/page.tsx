@@ -2,13 +2,34 @@
 
 import { useParams } from 'next/navigation';
 import React, { useState } from 'react';
+import {
+  useReactTable,
+  getCoreRowModel,
+  flexRender,
+} from '@tanstack/react-table';
 import DropdownFilter from '../../../components/DropdownFilter';
-import Table from '../../../components/Table';
 
-const DeliverableDetails = () => {
-  const { id } = useParams();
+interface Deliverable {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  progress: string;
+  category: string;
+  timeSpent: string;
+  status: string;
+}
 
-  const [details] = useState([
+const DeliverableDetails: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof Deliverable | '';
+    direction: 'asc' | 'desc';
+  }>({ key: '', direction: 'asc' });
+
+  const details: Deliverable[] = [
     {
       id: '1.1',
       name: 'Task 1',
@@ -39,183 +60,7 @@ const DeliverableDetails = () => {
       timeSpent: '12 hours',
       status: 'Completed',
     },
-    {
-      id: '1.4',
-      name: 'Task 4',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '75%',
-      category: 'Development',
-      timeSpent: '6 hours',
-      status: 'In Progress',
-    },
-    {
-      id: '1.5',
-      name: 'Task 5',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '20%',
-      category: 'Marketing',
-      timeSpent: '3 hours',
-      status: 'Delayed',
-    },
-    {
-      id: '1.6',
-      name: 'Task 6',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '65%',
-      category: 'Analysis',
-      timeSpent: '7 hours',
-      status: 'In Progress',
-    },
-    {
-      id: '1.7',
-      name: 'Task 7',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '90%',
-      category: 'Design',
-      timeSpent: '10 hours',
-      status: 'In Progress',
-    },
-    {
-      id: '1.8',
-      name: 'Task 8',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '45%',
-      category: 'Documentation',
-      timeSpent: '4 hours',
-      status: 'Pending',
-    },
-    {
-      id: '1.9',
-      name: 'Task 9',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '100%',
-      category: 'Testing',
-      timeSpent: '15 hours',
-      status: 'Completed',
-    },
-    {
-      id: '1.10',
-      name: 'Task 10',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '25%',
-      category: 'Research',
-      timeSpent: '5 hours',
-      status: 'In Progress',
-    },
-    {
-      id: '1.11',
-      name: 'Task 11',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '80%',
-      category: 'Development',
-      timeSpent: '20 hours',
-      status: 'In Progress',
-    },
-    {
-      id: '1.12',
-      name: 'Task 12',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '15%',
-      category: 'Design',
-      timeSpent: '2 hours',
-      status: 'Delayed',
-    },
-    {
-      id: '1.13',
-      name: 'Task 13',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '55%',
-      category: 'Documentation',
-      timeSpent: '6 hours',
-      status: 'In Progress',
-    },
-    {
-      id: '1.14',
-      name: 'Task 14',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '10%',
-      category: 'Research',
-      timeSpent: '3 hours',
-      status: 'Pending',
-    },
-    {
-      id: '1.15',
-      name: 'Task 15',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '100%',
-      category: 'Testing',
-      timeSpent: '18 hours',
-      status: 'Completed',
-    },
-    {
-      id: '1.16',
-      name: 'Task 16',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '70%',
-      category: 'Development',
-      timeSpent: '8 hours',
-      status: 'In Progress',
-    },
-    {
-      id: '1.17',
-      name: 'Task 17',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '40%',
-      category: 'Analysis',
-      timeSpent: '5 hours',
-      status: 'In Progress',
-    },
-    {
-      id: '1.18',
-      name: 'Task 18',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '95%',
-      category: 'Documentation',
-      timeSpent: '12 hours',
-      status: 'In Progress',
-    },
-    {
-      id: '1.19',
-      name: 'Task 19',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '30%',
-      category: 'Design',
-      timeSpent: '4 hours',
-      status: 'Delayed',
-    },
-    {
-      id: '1.20',
-      name: 'Task 20',
-      startDate: '2023-11-14',
-      endDate: '2023-12-20',
-      progress: '100%',
-      category: 'Testing',
-      timeSpent: '15 hours',
-      status: 'Completed',
-    },
-  ]);
-
-  const [statusFilter, setStatusFilter] = useState('');
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof (typeof details)[0] | '';
-    direction: 'asc' | 'desc';
-  }>({ key: '', direction: 'asc' });
+  ];
 
   const filteredDetails = details.filter((item) =>
     statusFilter ? item.status === statusFilter : true
@@ -223,33 +68,42 @@ const DeliverableDetails = () => {
 
   const sortedDetails = [...filteredDetails].sort((a, b) => {
     if (!sortConfig.key) return 0;
-    const aValue = a[sortConfig.key as keyof typeof a] || '';
-    const bValue = b[sortConfig.key as keyof typeof b] || '';
-    if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-    return 0;
+    const aValue = a[sortConfig.key] || '';
+    const bValue = b[sortConfig.key] || '';
+    return aValue < bValue
+      ? sortConfig.direction === 'asc'
+        ? -1
+        : 1
+      : aValue > bValue
+      ? sortConfig.direction === 'asc'
+        ? 1
+        : -1
+      : 0;
   });
 
-  const handleSort = (key: keyof (typeof details)[0]) => {
-    setSortConfig((prevConfig) => ({
+  const handleSort = (key: keyof Deliverable) => {
+    setSortConfig((prev) => ({
       key,
-      direction:
-        prevConfig.key === key && prevConfig.direction === 'asc'
-          ? 'desc'
-          : 'asc',
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
     }));
   };
 
-  const headers: { key: 'id' | 'name' | 'startDate' | 'endDate' | 'progress' | 'category' | 'timeSpent' | 'status'; label: string }[] = [
-    { key: 'id', label: 'No.' },
-    { key: 'name', label: 'Deliverable' },
-    { key: 'category', label: 'Category / Project' },
-    { key: 'startDate', label: 'Start Date' },
-    { key: 'endDate', label: 'End Date' },
-    { key: 'timeSpent', label: 'Time Spent' },
-    { key: 'progress', label: 'Progress Achieved' },
-    { key: 'status', label: 'Status' },
+  const columns = [
+    { accessorKey: 'id', header: 'No.' },
+    { accessorKey: 'name', header: 'Deliverable' },
+    { accessorKey: 'category', header: 'Category / Project' },
+    { accessorKey: 'startDate', header: 'Start Date' },
+    { accessorKey: 'endDate', header: 'End Date' },
+    { accessorKey: 'timeSpent', header: 'Time Spent' },
+    { accessorKey: 'progress', header: 'Progress Achieved' },
+    { accessorKey: 'status', header: 'Status' },
   ];
+
+  const table = useReactTable({
+    data: sortedDetails,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
@@ -258,7 +112,6 @@ const DeliverableDetails = () => {
           Details for Deliverable {id}
         </h1>
 
-        {/* Dropdown Filters */}
         <div className="flex gap-4 mb-6">
           <DropdownFilter
             value={statusFilter}
@@ -268,14 +121,55 @@ const DeliverableDetails = () => {
           />
         </div>
 
-        {/* Table */}
-        <Table
-          data={sortedDetails}
-          headers={headers}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-          clickable={false}
-        />
+        <div className="overflow-hidden rounded-lg">
+          <div className="overflow-x-auto max-h-[500px] scrollbar-hide">
+            <table className="w-full text-left border-collapse bg-white">
+              <thead className="sticky top-0 bg-gray-800 text-white">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        className="px-6 py-3 text-sm font-semibold cursor-pointer select-none"
+                        onClick={() =>
+                          handleSort(
+                            header.column.columnDef
+                              .id as keyof Deliverable
+                          )
+                        }
+                      >
+                        <div className="flex items-center justify-start gap-2">
+                          <span>
+                            {typeof header.column.columnDef.header === 'function'
+                              ? header.column.columnDef.header(header.getContext())
+                              : header.column.columnDef.header}
+                          </span>
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody>
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="border-b hover:bg-gray-100">
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className="px-6 py-3 border border-gray-300"
+                      >
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );

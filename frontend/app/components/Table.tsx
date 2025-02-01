@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import TableCell from './TableCell';
 import SortAscIcon from './SortAscIcon';
 import SortDescIcon from './SortDescIcon';
@@ -10,13 +10,13 @@ interface SortConfig {
 
 interface TableProps<T> {
   data: T[];
-  headers: { key: keyof T; label: string }[];
+  headers: { key: keyof T; label: string; editable?: boolean }[];
   sortConfig: SortConfig;
   onSort: (key: keyof T) => void;
   clickable?: boolean;
   onRowClick?: (id: number | string) => void;
-  editableRows?: (id: number | string) => boolean; // Function to determine if a row is editable
-  onEdit?: (id: number | string, key: keyof T, value: any) => void; // Callback for editing
+  onEdit?: (id: number | string, key: keyof T, value: string) => void; // Callback for editing
+  renderCell?: (item: T, key: keyof T) => React.ReactNode; // Function to render custom cell content
 }
 
 const Table = <T extends { id: number | string }>({
@@ -24,9 +24,9 @@ const Table = <T extends { id: number | string }>({
   headers,
   sortConfig,
   onSort,
-  clickable = false,
+  clickable,
   onRowClick,
-  editableRows = () => false,
+  renderCell = (item: T, key: keyof T) => item[key] as React.ReactNode,
   onEdit,
 }: TableProps<T>) => {
   const renderSortIcon = (key: keyof T) => {
@@ -40,7 +40,7 @@ const Table = <T extends { id: number | string }>({
     }
   };
 
-  const handleEdit = (id: number | string, key: keyof T, value: any) => {
+  const handleEdit = (id: number | string, key: keyof T, value: string) => {
     if (onEdit) {
       onEdit(id, key, value);
     }
@@ -77,7 +77,7 @@ const Table = <T extends { id: number | string }>({
               >
                 {headers.map((header) => (
                   <TableCell key={String(header.key)}>
-                    {editableRows(row.id) ? (
+                    {header.editable ? (
                       <input
                         type="text"
                         value={row[header.key] as string}
@@ -87,7 +87,7 @@ const Table = <T extends { id: number | string }>({
                         className="w-full border border-gray-300 rounded p-1"
                       />
                     ) : (
-                      (row[header.key] as React.ReactNode)
+                      renderCell(row, header.key)
                     )}
                   </TableCell>
                 ))}

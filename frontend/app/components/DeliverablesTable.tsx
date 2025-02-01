@@ -1,6 +1,11 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import Table from './Table';
+import {
+  useReactTable,
+  getCoreRowModel,
+  flexRender,
+  ColumnDef,
+} from '@tanstack/react-table';
 
 interface Deliverable {
   id: number;
@@ -21,35 +26,73 @@ interface DeliverablesTableProps {
 
 const DeliverablesTable: React.FC<DeliverablesTableProps> = ({
   data,
-  sortConfig,
   onSort,
 }) => {
   const router = useRouter();
 
-  const headers: { key: keyof Deliverable; label: string }[] = [
-    { key: 'id', label: 'No.' },
-    { key: 'name', label: 'Deliverable' },
-    { key: 'category', label: 'Category / Project' },
-    { key: 'startDate', label: 'Start Date' },
-    { key: 'endDate', label: 'End Date' },
-    { key: 'timeSpent', label: 'Time Spent' },
-    { key: 'progress', label: 'Progress Achieved' },
-    { key: 'status', label: 'Status' },
+  const columns: ColumnDef<Deliverable>[] = [
+    { accessorKey: 'id', header: 'No.' },
+    { accessorKey: 'name', header: 'Deliverable' },
+    { accessorKey: 'category', header: 'Category / Project' },
+    { accessorKey: 'startDate', header: 'Start Date' },
+    { accessorKey: 'endDate', header: 'End Date' },
+    { accessorKey: 'timeSpent', header: 'Time Spent' },
+    { accessorKey: 'progress', header: 'Progress Achieved' },
+    { accessorKey: 'status', header: 'Status' },
   ];
 
-  const handleRowClick = (id: string | number) => {
+  const table = useReactTable({
+    data,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  const handleRowClick = (id: number) => {
     router.push(`./deliverables/${id}`);
   };
 
   return (
-    <Table
-      data={data}
-      headers={headers}
-      sortConfig={sortConfig}
-      onSort={onSort}
-      clickable={true}
-      onRowClick={handleRowClick}
-    />
+    <div className="overflow-hidden rounded-lg">
+      <div className="overflow-x-auto max-h-[500px] scrollbar-hide">
+        <table className="w-full text-left border-collapse bg-white">
+          <thead className="sticky top-0 bg-gray-800 text-white">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th
+                    key={header.id}
+                    className="px-6 py-3 text-sm font-semibold cursor-pointer select-none"
+                    onClick={() => onSort(header.id as keyof Deliverable)}
+                  >
+                    <div className="flex items-center justify-start gap-2">
+                      <span>{header.column.columnDef.header as string}</span>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row) => (
+              <tr
+                key={row.id}
+                className="border-b hover:bg-gray-100 cursor-pointer"
+                onClick={() => handleRowClick(row.original.id)}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <td
+                    key={cell.id}
+                    className="px-6 py-3 border border-gray-300"
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 };
 

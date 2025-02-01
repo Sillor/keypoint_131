@@ -1,12 +1,79 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 const Sidebar: React.FC = () => {
+  const pathname = usePathname();
+
+  const menuItems = [
+    {
+      name: 'Dashboard',
+      path: '/',
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+          stroke="currentColor"
+          className="w-5 h-5 mr-3"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M3 12l2-2m0 0l7-7 7 7m-9 12v-8m0 0H4m6 0h6"
+          />
+        </svg>
+      ),
+    },
+    {
+      name: 'Deliverables',
+      path: '/pages/deliverables',
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+          stroke="currentColor"
+          className="w-5 h-5 mr-3"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M4 6h16M4 12h16m-7 6h7"
+          />
+        </svg>
+      ),
+    },
+    {
+      name: 'KPI Overview',
+      path: '/pages/kpi-overview',
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+          stroke="currentColor"
+          className="w-5 h-5 mr-3"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 8c-2.2 0-4 1.8-4 4s1.8 4 4 4m0-8v8m0-8c2.2 0 4-1.8 4-4m-4 0a4 4 0 110 8m0-4v8m0-8c-2.2 0-4 1.8-4 4m0-4c0 2.2 1.8 4 4 4m0-4v8"
+          />
+        </svg>
+      ),
+    },
+  ];
+
   return (
     <div className="w-64 h-full bg-[#234E52] text-white flex flex-col items-start py-6 px-4 shadow-lg">
       {/* Logo Section */}
       <div className="flex items-center mb-10">
-        {/* Placeholder for Logo */}
         <div className="w-10 h-10 bg-transparent">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -23,74 +90,27 @@ const Sidebar: React.FC = () => {
             />
           </svg>
         </div>
-        <span className="text-2xl font-bold text-    ml-3">KeyPoint</span>
+        <span className="text-2xl font-bold ml-3">KeyPoint</span>
       </div>
 
       {/* Navigation Links */}
       <ul className="w-full">
-        <li className="mb-4">
-          <Link href="/" passHref>
-            <div className="flex items-center text-gray-300 hover:text-white cursor-pointer transition-colors duration-300">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-5 h-5 mr-3"
+        {menuItems.map((item) => (
+          <li key={item.path} className="mb-4">
+            <Link href={item.path}>
+              <div
+                className={`flex items-center px-4 py-2 rounded-lg cursor-pointer transition-colors duration-300 ${
+                  pathname === item.path
+                    ? 'bg-teal-500 text-white'
+                    : 'text-gray-300 hover:text-white'
+                }`}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3 12l2-2m0 0l7-7 7 7m-9 12v-8m0 0H4m6 0h6"
-                />
-              </svg>
-              Dashboard
-            </div>
-          </Link>
-        </li>
-        <li className="mb-4">
-          <Link href="/deliverables" passHref>
-            <div className="flex items-center text-white cursor-pointer font-semibold transition-colors duration-300">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-5 h-5 mr-3"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4 6h16M4 12h16m-7 6h7"
-                />
-              </svg>
-              Deliverables
-            </div>
-          </Link>
-        </li>
-        <li className="mb-4">
-          <Link href="/kpi-overview" passHref>
-            <div className="flex items-center text-gray-300 hover:text-white cursor-pointer transition-colors duration-300">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-                className="w-5 h-5 mr-3"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 8c-2.2 0-4 1.8-4 4s1.8 4 4 4m0-8v8m0-8c2.2 0 4-1.8 4-4m-4 0a4 4 0 110 8m0-4v8m0-8c-2.2 0-4 1.8-4 4m0-4c0 2.2 1.8 4 4 4m0-4v8"
-                />
-              </svg>
-              KPI Overview
-            </div>
-          </Link>
-        </li>
+                {item.icon}
+                {item.name}
+              </div>
+            </Link>
+          </li>
+        ))}
       </ul>
     </div>
   );
