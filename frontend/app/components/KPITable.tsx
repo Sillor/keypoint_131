@@ -88,15 +88,11 @@ const KPITable: React.FC<KPITableProps> = ({ data, handleEdit }) => {
                     key={cell.id}
                     className="px-6 py-3 border border-gray-300"
                     onClick={() =>
-                      handleCellClick(
-                        row.original,
-                        cell.column.id as keyof KPI
-                      )
+                      handleCellClick(row.original, cell.column.id as keyof KPI)
                     }
                   >
                     {editingCell?.row.id === row.original.id &&
-                    editingCell?.column ===
-                      (cell.column.id as keyof KPI) ? (
+                    editingCell?.column === (cell.column.id as keyof KPI) ? (
                       <input
                         type="text"
                         className="w-full border border-gray-300 rounded p-1"
