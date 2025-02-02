@@ -1,13 +1,12 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import React, { useState } from 'react';
+import React from 'react';
 import {
   useReactTable,
   getCoreRowModel,
   flexRender,
 } from '@tanstack/react-table';
-import DropdownFilter from '../../../components/DropdownFilter';
 
 interface Deliverable {
   id: string;
@@ -22,12 +21,6 @@ interface Deliverable {
 
 const DeliverableDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-
-  const [statusFilter, setStatusFilter] = useState<string>('');
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof Deliverable | '';
-    direction: 'asc' | 'desc';
-  }>({ key: '', direction: 'asc' });
 
   const details: Deliverable[] = [
     {
@@ -62,32 +55,6 @@ const DeliverableDetails: React.FC = () => {
     },
   ];
 
-  const filteredDetails = details.filter((item) =>
-    statusFilter ? item.status === statusFilter : true
-  );
-
-  const sortedDetails = [...filteredDetails].sort((a, b) => {
-    if (!sortConfig.key) return 0;
-    const aValue = a[sortConfig.key] || '';
-    const bValue = b[sortConfig.key] || '';
-    return aValue < bValue
-      ? sortConfig.direction === 'asc'
-        ? -1
-        : 1
-      : aValue > bValue
-      ? sortConfig.direction === 'asc'
-        ? 1
-        : -1
-      : 0;
-  });
-
-  const handleSort = (key: keyof Deliverable) => {
-    setSortConfig((prev) => ({
-      key,
-      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
-    }));
-  };
-
   const columns = [
     { accessorKey: 'id', header: 'No.' },
     { accessorKey: 'name', header: 'Deliverable' },
@@ -100,9 +67,10 @@ const DeliverableDetails: React.FC = () => {
   ];
 
   const table = useReactTable({
-    data: sortedDetails,
+    data: details,
     columns,
     getCoreRowModel: getCoreRowModel(),
+    manualSorting: true,
   });
 
   return (
@@ -111,15 +79,6 @@ const DeliverableDetails: React.FC = () => {
         <h1 className="text-3xl font-bold mb-6 text-gray-800">
           Details for Deliverable {id}
         </h1>
-
-        <div className="flex gap-4 mb-6">
-          <DropdownFilter
-            value={statusFilter}
-            onChange={setStatusFilter}
-            options={['Completed', 'In Progress', 'Pending']}
-            label="All Status"
-          />
-        </div>
 
         <div className="overflow-hidden rounded-lg">
           <div className="overflow-x-auto max-h-[500px] scrollbar-hide">
@@ -131,17 +90,14 @@ const DeliverableDetails: React.FC = () => {
                       <th
                         key={header.id}
                         className="px-6 py-3 text-sm font-semibold cursor-pointer select-none"
-                        onClick={() =>
-                          handleSort(
-                            header.column.columnDef
-                              .id as keyof Deliverable
-                          )
-                        }
                       >
                         <div className="flex items-center justify-start gap-2">
                           <span>
-                            {typeof header.column.columnDef.header === 'function'
-                              ? header.column.columnDef.header(header.getContext())
+                            {typeof header.column.columnDef.header ===
+                            'function'
+                              ? header.column.columnDef.header(
+                                  header.getContext()
+                                )
                               : header.column.columnDef.header}
                           </span>
                         </div>

@@ -1,22 +1,27 @@
 import React from 'react';
-import TableCell from './TableCell';
+import {
+  useReactTable,
+  getCoreRowModel,
+  ColumnDef,
+} from '@tanstack/react-table';
 import SortAscIcon from './SortAscIcon';
 import SortDescIcon from './SortDescIcon';
+import TableCell from './TableCell';
 
 interface SortConfig {
   key: string | '';
   direction: 'asc' | 'desc';
 }
 
-interface TableProps<T> {
+interface TableProps<T extends { id: number | string }> {
   data: T[];
   headers: { key: keyof T; label: string; editable?: boolean }[];
   sortConfig: SortConfig;
   onSort: (key: keyof T) => void;
   clickable?: boolean;
   onRowClick?: (id: number | string) => void;
-  onEdit?: (id: number | string, key: keyof T, value: string) => void; // Callback for editing
-  renderCell?: (item: T, key: keyof T) => React.ReactNode; // Function to render custom cell content
+  onEdit?: (id: number | string, key: keyof T, value: string) => void;
+  renderCell?: (item: T, key: keyof T) => React.ReactNode;
 }
 
 const Table = <T extends { id: number | string }>({
@@ -29,6 +34,17 @@ const Table = <T extends { id: number | string }>({
   renderCell = (item: T, key: keyof T) => item[key] as React.ReactNode,
   onEdit,
 }: TableProps<T>) => {
+  const columns: ColumnDef<T>[] = headers.map((header) => ({
+    accessorKey: header.key,
+    header: header.label,
+  }));
+
+  const table = useReactTable({
+    data,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
   const renderSortIcon = (key: keyof T) => {
     if (sortConfig.key !== key) return null;
     return sortConfig.direction === 'asc' ? <SortAscIcon /> : <SortDescIcon />;
@@ -67,27 +83,31 @@ const Table = <T extends { id: number | string }>({
             </tr>
           </thead>
           <tbody>
-            {data.map((row) => (
+            {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
                 className={`border-b ${
                   clickable ? 'cursor-pointer hover:bg-gray-100' : ''
                 }`}
-                onClick={() => handleRowClick(row.id)}
+                onClick={() => handleRowClick(row.original.id)}
               >
                 {headers.map((header) => (
                   <TableCell key={String(header.key)}>
                     {header.editable ? (
                       <input
                         type="text"
-                        value={row[header.key] as string}
+                        value={row.original[header.key] as string}
                         onChange={(e) =>
-                          handleEdit(row.id, header.key, e.target.value)
+                          handleEdit(
+                            row.original.id,
+                            header.key,
+                            e.target.value
+                          )
                         }
                         className="w-full border border-gray-300 rounded p-1"
                       />
                     ) : (
-                      renderCell(row, header.key)
+                      renderCell(row.original, header.key)
                     )}
                   </TableCell>
                 ))}
