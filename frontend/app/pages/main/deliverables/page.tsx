@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import SearchBar from '../../components/SearchBar';
-import DropdownFilter from '../../components/DropdownFilter';
-import DeliverablesTable from '../../components/DeliverablesTable';
+import SearchBar from '../../../components/SearchBar';
+import DropdownFilter from '../../../components/DropdownFilter';
+import DeliverablesTable from '../../../components/DeliverablesTable';
 
 // Main Page Component
 const Page = () => {

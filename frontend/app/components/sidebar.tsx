@@ -30,7 +30,7 @@ const Sidebar: React.FC = () => {
     },
     {
       name: 'Deliverables',
-      path: '/pages/deliverables',
+      path: '/pages/main/deliverables',
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -50,7 +50,7 @@ const Sidebar: React.FC = () => {
     },
     {
       name: 'KPI Overview',
-      path: '/pages/kpi-overview',
+      path: '/pages/main/kpi-overview',
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -69,6 +69,12 @@ const Sidebar: React.FC = () => {
       ),
     },
   ];
+
+  const handleLogout = () => {
+    console.log('Logging out...');
+    localStorage.removeItem('token');
+    window.location.href = '/';
+  };
 
   return (
     <div className="w-64 h-full bg-[#234E52] text-white flex flex-col items-start py-6 px-4 shadow-lg">
@@ -94,7 +100,7 @@ const Sidebar: React.FC = () => {
       </div>
 
       {/* Navigation Links */}
-      <ul className="w-full">
+      <ul className="w-full flex-grow">
         {menuItems.map((item) => (
           <li key={item.path} className="mb-4">
             <Link href={item.path}>
@@ -112,6 +118,14 @@ const Sidebar: React.FC = () => {
           </li>
         ))}
       </ul>
+
+      {/* Logout Button */}
+      <button
+        onClick={handleLogout}
+        className="mt-auto w-full bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors duration-300"
+      >
+        Logout
+      </button>
     </div>
   );
 };

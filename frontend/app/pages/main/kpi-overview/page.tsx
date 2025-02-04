@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import SearchBar from '../../components/SearchBar';
-import DropdownFilter from '../../components/DropdownFilter';
-import KPITable from '../../components/KPITable';
+import SearchBar from '../../../components/SearchBar';
+import DropdownFilter from '../../../components/DropdownFilter';
+import KPITable from '../../../components/KPITable';
 
 // Main Page Component
 interface KPI {
