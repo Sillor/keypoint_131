@@ -20,7 +20,7 @@ interface KPI {
 
 interface KPITableProps {
   data: KPI[];
-  handleEdit: (id: string | number, key: keyof KPI, value: string) => void;
+  handleEdit: (id: number, key: keyof KPI, value: string) => void;
 }
 
 const KPITable: React.FC<KPITableProps> = ({ data, handleEdit }) => {
@@ -41,7 +41,7 @@ const KPITable: React.FC<KPITableProps> = ({ data, handleEdit }) => {
 
   const handleSave = () => {
     if (!editingCell) return;
-    handleEdit(editingCell.rowId, editingCell.column, tempValue.toString());
+    handleEdit(Number(editingCell.rowId), editingCell.column, tempValue.toString());
     setEditingCell(null);
   };
 

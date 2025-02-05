@@ -133,6 +133,21 @@ app.delete('/projects/:id', authenticateToken, (req, res) => {
     });
 });
 
+// Retrieve KPI for the authenticated user
+app.get('/kpi', authenticateToken, (req, res) => {
+    const userId = req.user.id;
+
+    db.query('SELECT * FROM kpis WHERE user_id = ?', [userId], (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: 'No KPI data found for this user' });
+        }
+
+        res.json(results);
+    });
+});
+
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 });
