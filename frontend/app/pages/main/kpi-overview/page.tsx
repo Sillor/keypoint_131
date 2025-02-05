@@ -42,7 +42,12 @@ const Page = () => {
         });
 
         if (!response.ok) {
-          throw new Error('Failed to fetch KPI data');
+          if (response.status === 404) {
+            setTableData([]);
+            return;
+          }
+          const errorMessage = await response.text();
+          throw new Error(errorMessage || 'Failed to fetch KPI data');
         }
         const data: KPI[] = await response.json();
         setTableData(data);
@@ -78,8 +83,14 @@ const Page = () => {
     );
   };
 
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
+  if (loading)
+    return <div className="text-center text-gray-700">Loading...</div>;
+  if (error)
+    return (
+      <div className="text-center text-red-600 bg-red-100 p-4 rounded-md">
+        Error: {error}
+      </div>
+    );
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
