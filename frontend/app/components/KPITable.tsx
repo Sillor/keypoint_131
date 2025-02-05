@@ -25,40 +25,72 @@ interface KPITableProps {
 
 const KPITable: React.FC<KPITableProps> = ({ data, handleEdit }) => {
   const [editingCell, setEditingCell] = useState<{
-    row: KPI;
+    rowId: string | number;
     column: keyof KPI;
   } | null>(null);
   const [tempValue, setTempValue] = useState<string | number>('');
 
-  const columns: ColumnDef<KPI>[] = [
-    { accessorFn: (row) => row.category, header: 'Category' },
-    { accessorFn: (row) => row.kpiId, header: 'ID' },
-    { accessorFn: (row) => row.kpi, header: 'KPI' },
-    { accessorFn: (row) => row.description, header: 'Description' },
-    { accessorFn: (row) => row.target, header: 'Target' },
-    { accessorFn: (row) => row.uom, header: 'UoM' },
-    { accessorFn: (row) => row.frequency, header: 'Frequency' },
-    { accessorFn: (row) => row.status, header: 'Status' },
-  ];
+  const handleCellClick = (
+    rowId: string | number,
+    column: keyof KPI,
+    value: string | number
+  ) => {
+    setEditingCell({ rowId, column });
+    setTempValue(value ?? '');
+  };
+
+  const handleSave = () => {
+    if (!editingCell) return;
+    handleEdit(editingCell.rowId, editingCell.column, tempValue.toString());
+    setEditingCell(null);
+  };
+
+  const columns: ColumnDef<KPI>[] = (
+    [
+      'category',
+      'kpiId',
+      'kpi',
+      'description',
+      'target',
+      'uom',
+      'frequency',
+      'status',
+    ] as (keyof KPI)[]
+  ).map((columnKey) => ({
+    accessorKey: columnKey,
+    header: columnKey.charAt(0).toUpperCase() + columnKey.slice(1),
+    cell: ({ row }) => {
+      const cellValue = row.original[columnKey];
+      const isEditing =
+        editingCell?.rowId === row.original.id &&
+        editingCell?.column === columnKey;
+
+      return isEditing ? (
+        <input
+          type="text"
+          className="w-full border border-gray-300 rounded p-1"
+          value={tempValue}
+          onChange={(e) => setTempValue(e.target.value)}
+          onBlur={handleSave}
+          onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+          autoFocus
+        />
+      ) : (
+        <span
+          className="cursor-pointer"
+          onClick={() => handleCellClick(row.original.id, columnKey, cellValue)}
+        >
+          {cellValue || '—'}
+        </span>
+      );
+    },
+  }));
 
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
-
-  const handleCellClick = (row: KPI, column: keyof KPI) => {
-    if (!['category', 'target', 'status'].includes(column)) return;
-    setEditingCell({ row, column });
-    setTempValue(row[column]);
-  };
-
-  const handleSave = () => {
-    if (editingCell) {
-      handleEdit(editingCell.row.id, editingCell.column, tempValue.toString());
-      setEditingCell(null);
-    }
-  };
 
   return (
     <div className="overflow-hidden rounded-lg">
@@ -72,9 +104,7 @@ const KPITable: React.FC<KPITableProps> = ({ data, handleEdit }) => {
                     key={header.id}
                     className="px-6 py-3 text-sm font-semibold cursor-pointer select-none"
                   >
-                    <div className="flex items-center justify-start gap-2">
-                      <span>{header.column.columnDef.header as string}</span>
-                    </div>
+                    {header.column.columnDef.header as string}
                   </th>
                 ))}
               </tr>
@@ -87,24 +117,8 @@ const KPITable: React.FC<KPITableProps> = ({ data, handleEdit }) => {
                   <td
                     key={cell.id}
                     className="px-6 py-3 border border-gray-300"
-                    onClick={() =>
-                      handleCellClick(row.original, cell.column.id as keyof KPI)
-                    }
                   >
-                    {editingCell?.row.id === row.original.id &&
-                    editingCell?.column === (cell.column.id as keyof KPI) ? (
-                      <input
-                        type="text"
-                        className="w-full border border-gray-300 rounded p-1"
-                        value={tempValue}
-                        onChange={(e) => setTempValue(e.target.value)}
-                        onBlur={handleSave}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSave()}
-                        autoFocus
-                      />
-                    ) : (
-                      flexRender(cell.column.columnDef.cell, cell.getContext())
-                    )}
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
               </tr>
