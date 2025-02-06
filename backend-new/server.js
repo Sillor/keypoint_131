@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
+const { promisify } = require('util');
 
 dotenv.config();
 
@@ -147,6 +148,86 @@ app.get('/kpi', authenticateToken, (req, res) => {
         res.json(results);
     });
 });
+
+// Update KPI endpoint
+app.put('/kpi/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+
+    if (!updates || Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: 'No updates provided' });
+    }
+
+    const allowedKeys = ['category', 'kpi', 'description', 'target', 'uom', 'frequency', 'status'
+    ]; // Define valid fields
+    const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
+
+    if (updateFields.length === 0) {
+        return res.status(400).json({ message: 'Invalid KPI field(s) provided' });
+    }
+
+    // Build update query dynamically
+    let query = `UPDATE kpis SET `;
+    let queryParams = [];
+
+    updateFields.forEach((field, index) => {
+        query += index > 0 ? `, ?? = ?` : `?? = ?`;
+        queryParams.push(field, updates[field]);
+    });
+
+    query += ` WHERE id = ?`;
+    queryParams.push(id);
+
+    // Restrict non-admins to updating only their own KPIs
+    if (req.user.role !== 'admin') {
+        query += ` AND user_id = ?`;
+        queryParams.push(req.user.id);
+    }
+
+    db.query(query, queryParams, (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Database error', error: err });
+        }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ message: 'KPI not found or unauthorized' });
+        }
+        res.json({ message: `KPI ${id} updated successfully` });
+    });
+});
+
+app.post('/kpi', authenticateToken, async (req, res) => {
+    try {
+        let { category, kpi, description, target, uom, frequency, status } = req.body;
+        const userId = req.user?.id; // Ensure userId exists
+
+        console.log('User ID:', userId, 'Category:', category, 'KPI:', kpi, 'Target:', target, 'UOM:', uom, 'Frequency:', frequency, 'Status:', status);
+
+        if (!category && !kpi && !target && !uom && !frequency && status === undefined) {
+            category = '';
+            kpi = '';
+            target = 0;
+            uom = '';
+            frequency = '';
+            status = '';
+        }
+
+        if (!target) target = 0;
+
+        // Using async/await with promisified query
+        const query = promisify(db.query).bind(db);
+        const result = await query(
+            'INSERT INTO kpis (user_id, category, kpi, description, target, uom, frequency, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [userId, category, kpi, description, target, uom, frequency, status]
+        );
+
+        res.status(201).json({ message: 'KPI created successfully', id: result.insertId });
+
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
+});
+
 
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);

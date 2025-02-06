@@ -30,9 +30,7 @@ const Page = () => {
     const fetchKPIs = async () => {
       try {
         const token = localStorage.getItem('token');
-        if (!token) {
-          throw new Error('No authentication token found');
-        }
+        if (!token) throw new Error('No authentication token found');
 
         const response = await fetch('http://localhost:3333/kpi', {
           headers: {
@@ -49,14 +47,15 @@ const Page = () => {
           const errorMessage = await response.text();
           throw new Error(errorMessage || 'Failed to fetch KPI data');
         }
+
         const data: KPI[] = await response.json();
+
+        // Debug: Log the fetched data
+        console.log('Fetched KPIs:', data);
+
         setTableData(data);
       } catch (error) {
-        if (error instanceof Error) {
-          setError(error.message);
-        } else {
-          setError(String(error));
-        }
+        setError(error instanceof Error ? error.message : String(error));
       } finally {
         setLoading(false);
       }
@@ -69,9 +68,10 @@ const Page = () => {
     const matchesCategory = categoryFilter
       ? item.category === categoryFilter
       : true;
-    const matchesSearch = item.kpi
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
+    const matchesSearch =
+      item.kpi && typeof item.kpi === 'string'
+        ? item.kpi.toLowerCase().includes(searchTerm.toLowerCase())
+        : true; // Allow empty kpi fields
     return matchesCategory && matchesSearch;
   });
 
@@ -92,6 +92,10 @@ const Page = () => {
       </div>
     );
 
+  const handleAddKPI = (newKPI: KPI) => {
+    setTableData((prevData) => [...prevData, newKPI]);
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-8">
       <div className="max-w-8xl mx-auto">
@@ -107,13 +111,21 @@ const Page = () => {
           <DropdownFilter
             value={categoryFilter}
             onChange={setCategoryFilter}
-            options={[...new Set(tableData.map((item) => item.category))]}
+            options={[
+              ...new Set(
+                tableData.map((item) => String(item.category || 'Unknown'))
+              ),
+            ]}
             label="All Categories"
           />
         </div>
 
-        {/* KPI Table */}
-        <KPITable data={filteredData} handleEdit={handleEdit} />
+        {/* Table */}
+        <KPITable
+          data={filteredData}
+          handleEdit={handleEdit}
+          handleAddKPI={handleAddKPI}
+        />
       </div>
     </div>
   );

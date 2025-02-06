@@ -1,11 +1,35 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { jwtDecode } from 'jwt-decode';
 
 const Sidebar: React.FC = () => {
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        interface DecodedToken {
+          role: string;
+        }
+        const decodedToken: DecodedToken = jwtDecode(token);
+        setIsAdmin(decodedToken.role === 'admin');
+      } catch (error) {
+        console.error('Invalid token', error);
+        setIsAdmin(false);
+      }
+    } else {
+      setIsAdmin(false);
+    }
+  }, []);
+
+  if (isAdmin === null) {
+    return null; // Prevent rendering until role is determined
+  }
 
   const menuItems = [
     {
@@ -49,8 +73,8 @@ const Sidebar: React.FC = () => {
       ),
     },
     {
-      name: 'KPI Overview',
-      path: '/pages/main/kpi-overview',
+      name: isAdmin ? 'Users' : 'KPI Overview',
+      path: isAdmin ? '/pages/main/users' : '/pages/main/kpi-overview',
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
