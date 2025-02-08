@@ -10,10 +10,10 @@ const UsersPage = () => {
         { key: 'name', label: 'Name', editable: true },
         { key: 'email', label: 'Email', editable: true },
         { key: 'role', label: 'Role', editable: false },
-        { key: 'created_at', label: 'Created At', editable: true },
+        { key: 'created_at', label: 'Created At', editable: false },
       ]}
       showRouteButton={true}
-      routeBasePath="kpi"
+      routeBasePath="./pages/main/kpi"
     />
   );
 };

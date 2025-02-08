@@ -10,7 +10,6 @@ const RegisterPage: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle registration logic here
     console.log({ email, password, confirmPassword });
   };
 
