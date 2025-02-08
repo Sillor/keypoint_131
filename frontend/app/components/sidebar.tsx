@@ -56,8 +56,8 @@ const Sidebar: React.FC = () => {
       ),
     },
     {
-      name: 'Deliverables',
-      path: '/pages/main/deliverables',
+      name: 'Projects',
+      path: '/pages/main/projects',
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"

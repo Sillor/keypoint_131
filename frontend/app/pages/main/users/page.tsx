@@ -6,7 +6,7 @@ const UsersPage = () => {
       title="Users Table"
       endpoint="users"
       columns={[
-        { key: 'id', label: 'id', editable: false },
+        { key: 'id', label: 'ID', editable: false },
         { key: 'name', label: 'Name', editable: true },
         { key: 'email', label: 'Email', editable: true },
         { key: 'role', label: 'Role', editable: false },

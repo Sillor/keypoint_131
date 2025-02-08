@@ -82,57 +82,172 @@ app.post('/login', (req, res) => {
     });
 });
 
-// Projects Routes (Authenticated)
-app.get('/projects', authenticateToken, (req, res) => {
-    let query = 'SELECT * FROM projects WHERE user_id = ?';
-    let params = [req.user.id];
 
-    if (req.user.role === 'admin') {
-        query = 'SELECT * FROM projects';
-        params = [];
-    }
 
-    db.query(query, params, (err, results) => {
-        if (err) return res.status(500).json(err);
+
+
+
+
+
+
+
+
+
+
+// Retrieve projects (admin gets all, user gets only their projects)
+app.get('/projects', authenticateToken, async (req, res) => {
+    try {
+        const query = promisify(db.query).bind(db);
+        let results;
+
+        if (req.user.role === 'admin') {
+            // Admin gets all projects
+            results = await query('SELECT * FROM projects');
+        } else {
+            // Regular user gets only their projects
+            results = await query('SELECT * FROM projects WHERE user_id = ?', [req.user.id]);
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: 'No projects found' });
+        }
+
         res.json(results);
-    });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
 });
 
-// Retrieve specific project
-app.get('/projects/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
-    let query = 'SELECT * FROM projects WHERE id = ? AND user_id = ?';
-    let params = [id, req.user.id];
+// Create or Update Project by user ID (self or admin access)
+app.post('/projects/:id', authenticateToken, async (req, res) => {
+    try {
+        let { name, category, start_date, end_date, status } = req.body;
+        const userId = String(req.user.id);
+        const isAdmin = req.user.role === 'admin';
+        const requestedId = String(req.params.id);
 
-    if (req.user.role === 'admin') {
-        query = 'SELECT * FROM projects WHERE id = ?';
-        params = [id];
+        if (userId !== requestedId && !isAdmin) {
+            return res.status(403).json({ message: 'Forbidden: Access denied' });
+        }
+
+        if (!name || !category || !start_date || !end_date || status === undefined) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        const query = promisify(db.query).bind(db);
+        const result = await query(
+            'INSERT INTO projects (user_id, name, category, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name), category = VALUES(category), start_date = VALUES(start_date), end_date = VALUES(end_date), status = VALUES(status)',
+            [requestedId, name, category, start_date, end_date, status]
+        );
+
+        res.status(201).json({ message: 'Project saved successfully', id: result.insertId });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
+});
+
+// Retrieve Projects by user ID (self or admin access)
+app.get('/projects/:id', authenticateToken, async (req, res) => {
+    try {
+        const userId = String(req.user.id);
+        const isAdmin = req.user.role === 'admin';
+        const requestedId = String(req.params.id);
+
+        if (userId !== requestedId && !isAdmin) {
+            return res.status(403).json({ message: 'Forbidden: Access denied' });
+        }
+
+        const query = promisify(db.query).bind(db);
+        const results = await query('SELECT * FROM projects WHERE user_id = ?', [requestedId]);
+
+        if (results.length === 0) {
+            return res.status(404).json({ message: 'No projects found for this user' });
+        }
+
+        res.json(results);
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
+});
+
+// Update Project endpoint
+app.put('/projects/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+
+    if (!updates || Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: 'No updates provided' });
     }
 
-    db.query(query, params, (err, results) => {
-        if (err) return res.status(500).json(err);
-        if (results.length === 0) return res.status(404).json({ message: 'Project not found' });
-        res.json(results[0]);
+    const allowedKeys = ['name', 'category', 'start_date', 'end_date', 'status'];
+    const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
+
+    if (updateFields.length === 0) {
+        return res.status(400).json({ message: 'Invalid project field(s) provided' });
+    }
+
+    let query = `UPDATE projects SET `;
+    let queryParams = [];
+
+    updateFields.forEach((field, index) => {
+        query += index > 0 ? `, ?? = ?` : `?? = ?`;
+        queryParams.push(field, updates[field]);
+    });
+
+    query += ` WHERE id = ?`;
+    queryParams.push(id);
+
+    if (req.user.role !== 'admin') {
+        query += ` AND user_id = ?`;
+        queryParams.push(req.user.id);
+    }
+
+    db.query(query, queryParams, (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Database error', error: err });
+        }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ message: 'Project not found or unauthorized' });
+        }
+        res.json({ message: `Project ${id} updated successfully` });
     });
 });
 
-// Delete project (only owner or admin)
+// Delete Project endpoint
 app.delete('/projects/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
-    let query = 'DELETE FROM projects WHERE id = ? AND user_id = ?';
-    let params = [id, req.user.id];
 
-    if (req.user.role === 'admin') {
-        query = 'DELETE FROM projects WHERE id = ?';
-        params = [id];
+    let query = `DELETE FROM projects WHERE id = ?`;
+    let queryParams = [id];
+
+    if (req.user.role !== 'admin') {
+        query += ` AND user_id = ?`;
+        queryParams.push(req.user.id);
     }
 
-    db.query(query, params, (err, results) => {
-        if (err) return res.status(500).json(err);
-        if (results.affectedRows === 0) return res.status(404).json({ message: 'Project not found or unauthorized' });
-        res.json({ message: 'Project deleted successfully' });
+    db.query(query, queryParams, (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Database error', error: err });
+        }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ message: 'Project not found or unauthorized' });
+        }
+        res.json({ message: `Project ${id} deleted successfully` });
     });
 });
+
+
+
+
+
+
+
+
+
+
 
 // Create or Update KPI by user ID (self or admin access)
 app.post('/kpi/:id', authenticateToken, async (req, res) => {
@@ -271,38 +386,14 @@ app.delete('/kpi/:id', authenticateToken, (req, res) => {
 });
 
 
-app.post('/kpi', authenticateToken, async (req, res) => {
-    try {
-        let { category, kpi, description, target, uom, frequency, status } = req.body;
-        const userId = req.user?.id; // Ensure userId exists
 
-        console.log('User ID:', userId, 'Category:', category, 'KPI:', kpi, 'Target:', target, 'UOM:', uom, 'Frequency:', frequency, 'Status:', status);
 
-        if (!category && !kpi && !target && !uom && !frequency && status === undefined) {
-            category = '';
-            kpi = '';
-            target = 0;
-            uom = '';
-            frequency = '';
-            status = '';
-        }
 
-        const sanitizedTarget = target === '' ? 10 : parseInt(target, 10);
 
-        // Using async/await with promisified query
-        const query = promisify(db.query).bind(db);
-        const result = await query(
-            'INSERT INTO kpis (user_id, category, kpi, description, target, uom, frequency, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [userId, category, kpi, description, sanitizedTarget, uom, frequency, status]
-        );
 
-        res.status(201).json({ message: 'KPI created successfully', id: result.insertId });
 
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ message: 'Database error', error: error.message });
-    }
-});
+
+
 
 // Retrieve all users (Admin only)
 app.get('/users', authenticateToken, (req, res) => {
