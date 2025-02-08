@@ -169,7 +169,6 @@ const GenericTablePage = <T extends GenericEntity>({
             value={filterValue}
             onChange={setFilterValue}
             options={[
-              'All Categories',
               ...Array.from(
                 new Set(
                   tableData.map((item) => String(item.category || 'Unknown'))

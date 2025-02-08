@@ -20,7 +20,7 @@ const ProjectsPage = () => {
         { key: 'status', label: 'Status', editable: true },
       ]}
       showRouteButton={true}
-      routeBasePath="./pages/main/projects"
+      routeBasePath="./pages/main/deliverables/"
     />
   );
 };
