@@ -20,12 +20,14 @@ interface GenericTablePageProps<T extends GenericEntity> {
   title: string;
   endpoint: string;
   columns: Column<T>[];
+  allowAddRow?: boolean;
 }
 
 const GenericTablePage = <T extends GenericEntity>({
   title,
   endpoint,
   columns,
+  allowAddRow = true,
 }: GenericTablePageProps<T>) => {
   const [tableData, setTableData] = useState<T[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -125,15 +127,6 @@ const GenericTablePage = <T extends GenericEntity>({
       </div>
     );
 
-  if (loading)
-    return <div className="text-center text-gray-700">Loading...</div>;
-  if (error)
-    return (
-      <div className="text-center text-red-600 bg-red-100 p-4 rounded-md">
-        Error: {error}
-      </div>
-    );
-
   const filteredData = tableData.filter(
     (item) =>
       (searchTerm
@@ -165,12 +158,14 @@ const GenericTablePage = <T extends GenericEntity>({
             ]}
             label="All Categories"
           />
-          <button
-            onClick={handleAddRow}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Add New Row
-          </button>
+          {allowAddRow && (
+            <button
+              onClick={handleAddRow}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Add New Row
+            </button>
+          )}
         </div>
         <Table
           data={filteredData}
