@@ -124,6 +124,24 @@ const GenericTablePage = <T extends GenericEntity>({
       </div>
     );
 
+  const filteredData = tableData
+    .filter((item) => {
+      // Apply Search
+      if (searchTerm) {
+        return columns.some(({ key }) =>
+          String(item[key]).toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      }
+      return true;
+    })
+    .filter((item) => {
+      // Apply Filter
+      if (filterValue && filterValue !== 'All Categories') {
+        return String(item.category || 'Unknown') === filterValue;
+      }
+      return true;
+    });
+
   return (
     <div className="min-h-screen bg-gray-100 p-8">
       <div className="max-w-8xl mx-auto">
@@ -134,6 +152,7 @@ const GenericTablePage = <T extends GenericEntity>({
             value={filterValue}
             onChange={setFilterValue}
             options={[
+              'All Categories',
               ...new Set(
                 tableData.map((item) => String(item.category || 'Unknown'))
               ),
@@ -148,7 +167,7 @@ const GenericTablePage = <T extends GenericEntity>({
           </button>
         </div>
         <Table
-          data={tableData}
+          data={filteredData}
           headers={columns}
           onEdit={handleEdit}
           onRemove={handleRemoveRow}
