@@ -109,9 +109,6 @@ app.post('/login', (req, res) => {
 
 
 
-
-
-
 // Retrieve projects (admin gets all, user gets only their projects)
 app.get('/projects', authenticateToken, async (req, res) => {
     try {
@@ -122,8 +119,11 @@ app.get('/projects', authenticateToken, async (req, res) => {
             // Admin gets all projects
             results = await query('SELECT * FROM projects');
         } else {
-            // Regular user gets only their projects
-            results = await query('SELECT * FROM projects WHERE user_id = ?', [req.user.id]);
+            // Regular user gets projects they are assigned to
+            results = await query(`
+                SELECT p.* FROM projects p
+                JOIN project_users pu ON p.id = pu.project_id
+                WHERE pu.user_id = ?`, [req.user.id]);
         }
 
         if (results.length === 0) {
@@ -137,126 +137,158 @@ app.get('/projects', authenticateToken, async (req, res) => {
     }
 });
 
-// Create or Update Project by user ID (self or admin access)
-app.post('/projects/:id', authenticateToken, async (req, res) => {
+// Create a new project and assign users
+app.post('/projects', authenticateToken, async (req, res) => {
     try {
-        let { name, category, start_date, end_date, status } = req.body;
-        const userId = String(req.user.id);
+        let { name, category, start_date, end_date, status, assignedUsers } = req.body;
         const isAdmin = req.user.role === 'admin';
-        const requestedId = String(req.params.id);
 
-        if (userId !== requestedId && !isAdmin) {
-            return res.status(403).json({ message: 'Forbidden: Access denied' });
+        if (!isAdmin) {
+            return res.status(403).json({ message: 'Forbidden: Only admins can create projects' });
         }
 
+        // Set default dates if not provided
         if (!start_date || !end_date) {
             start_date = new Date().toISOString().split('T')[0];
             end_date = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0];
         }
 
         const query = promisify(db.query).bind(db);
-        const result = await query(
-            'INSERT INTO projects (user_id, name, category, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name), category = VALUES(category), start_date = VALUES(start_date), end_date = VALUES(end_date), status = VALUES(status)',
-            [requestedId, name, category, start_date, end_date, status]
-        );
 
-        res.status(201).json({ message: 'Project saved successfully', id: result.insertId });
+        // Insert into projects table
+        const result = await query(
+            'INSERT INTO projects (name, category, start_date, end_date, status) VALUES (?, ?, ?, ?, ?)',
+            [name, category, start_date, end_date, status]
+        );
+        const projectId = result.insertId;
+
+        // Assign admin to the created project
+        await query('INSERT INTO project_users (project_id, user_id, role) VALUES (?, ?, ?)', [projectId, req.user.id, 'Manager']);
+
+        // Assign users to project
+        if (Array.isArray(assignedUsers) && assignedUsers.length > 0) {
+            const values = assignedUsers.map(userId => [projectId, userId, 'collaborator']);
+            await query('INSERT INTO project_users (project_id, user_id, role) VALUES ?', [values]);
+        }
+
+        res.status(201).json({ message: 'Project created successfully', id: projectId });
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ message: 'Database error', error: error.message });
     }
 });
 
-// Retrieve Projects by user ID (self or admin access)
+// Retrieve a project by ID (admin or assigned users only)
 app.get('/projects/:id', authenticateToken, async (req, res) => {
     try {
-        const userId = String(req.user.id);
+        const projectId = req.params.id;
         const isAdmin = req.user.role === 'admin';
-        const requestedId = String(req.params.id);
+        const userId = req.user.id;
 
-        if (userId !== requestedId && !isAdmin) {
-            return res.status(403).json({ message: 'Forbidden: Access denied' });
+        const query = promisify(db.query).bind(db);
+
+        let results;
+        if (isAdmin) {
+            results = await query('SELECT * FROM projects WHERE id = ?', [projectId]);
+        } else {
+            results = await query(`
+                SELECT p.* FROM projects p
+                JOIN project_users pu ON p.id = pu.project_id
+                WHERE p.id = ? AND pu.user_id = ?`, [projectId, userId]);
+        }
+
+        if (results.length === 0) {
+            return res.status(403).json({ message: 'Unauthorized or project not found' });
+        }
+
+        res.json(results[0]);
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
+});
+
+// Update a project (admin or assigned users)
+app.put('/projects/:id', authenticateToken, async (req, res) => {
+    try {
+        const projectId = req.params.id;
+        const updates = req.body;
+        const isAdmin = req.user.role === 'admin';
+        const userId = req.user.id;
+
+        if (!updates || Object.keys(updates).length === 0) {
+            return res.status(400).json({ message: 'No updates provided' });
+        }
+
+        const allowedKeys = ['name', 'category', 'start_date', 'end_date', 'status'];
+        const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
+
+        if (updateFields.length === 0) {
+            return res.status(400).json({ message: 'Invalid project field(s) provided' });
         }
 
         const query = promisify(db.query).bind(db);
-        const results = await query('SELECT * FROM projects WHERE user_id = ?', [requestedId]);
 
-        if (results.length === 0) {
-            return res.status(404).json({ message: 'No projects found for this user' });
+        // Check if user has access to this project
+        const projectCheck = await query(`
+            SELECT p.id FROM projects p
+            JOIN project_users pu ON p.id = pu.project_id
+            WHERE p.id = ? AND (pu.user_id = ? OR ? = true)`, [projectId, userId, isAdmin]);
+
+        if (projectCheck.length === 0) {
+            return res.status(403).json({ message: 'Unauthorized to update this project' });
         }
 
-        res.json(results);
+        // Update query dynamically
+        let queryStr = `UPDATE projects SET `;
+        let queryParams = [];
+
+        updateFields.forEach((field, index) => {
+            queryStr += index > 0 ? `, ?? = ?` : `?? = ?`;
+            queryParams.push(field, updates[field]);
+        });
+
+        queryStr += ` WHERE id = ?`;
+        queryParams.push(projectId);
+
+        await query(queryStr, queryParams);
+
+        res.json({ message: `Project ${projectId} updated successfully` });
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ message: 'Database error', error: error.message });
     }
 });
 
-// Update Project endpoint
-app.put('/projects/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
-    const updates = req.body;
+// Delete a project (admin only)
+app.delete('/projects/:id', authenticateToken, async (req, res) => {
+    try {
+        const projectId = req.params.id;
+        const isAdmin = req.user.role === 'admin';
 
-    if (!updates || Object.keys(updates).length === 0) {
-        return res.status(400).json({ message: 'No updates provided' });
-    }
-
-    const allowedKeys = ['name', 'category', 'start_date', 'end_date', 'status'];
-    const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
-
-    if (updateFields.length === 0) {
-        return res.status(400).json({ message: 'Invalid project field(s) provided' });
-    }
-
-    let query = `UPDATE projects SET `;
-    let queryParams = [];
-
-    updateFields.forEach((field, index) => {
-        query += index > 0 ? `, ?? = ?` : `?? = ?`;
-        queryParams.push(field, updates[field]);
-    });
-
-    query += ` WHERE id = ?`;
-    queryParams.push(id);
-
-    if (req.user.role !== 'admin') {
-        query += ` AND user_id = ?`;
-        queryParams.push(req.user.id);
-    }
-
-    db.query(query, queryParams, (err, results) => {
-        if (err) {
-            return res.status(500).json({ message: 'Database error', error: err });
+        if (!isAdmin) {
+            return res.status(403).json({ message: 'Unauthorized: Only admins can delete projects' });
         }
-        if (results.affectedRows === 0) {
-            return res.status(404).json({ message: 'Project not found or unauthorized' });
+
+        const query = promisify(db.query).bind(db);
+
+        // Check if the project exists before deleting
+        const projectCheck = await query(`SELECT id FROM projects WHERE id = ?`, [projectId]);
+
+        if (projectCheck.length === 0) {
+            return res.status(404).json({ message: 'Project not found' });
         }
-        res.json({ message: `Project ${id} updated successfully` });
-    });
+
+        // Delete the project
+        await query('DELETE FROM projects WHERE id = ?', [projectId]);
+
+        res.json({ message: `Project ${projectId} deleted successfully` });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
 });
 
-// Delete Project endpoint
-app.delete('/projects/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
-
-    let query = `DELETE FROM projects WHERE id = ?`;
-    let queryParams = [id];
-
-    if (req.user.role !== 'admin') {
-        query += ` AND user_id = ?`;
-        queryParams.push(req.user.id);
-    }
-
-    db.query(query, queryParams, (err, results) => {
-        if (err) {
-            return res.status(500).json({ message: 'Database error', error: err });
-        }
-        if (results.affectedRows === 0) {
-            return res.status(404).json({ message: 'Project not found or unauthorized' });
-        }
-        res.json({ message: `Project ${id} deleted successfully` });
-    });
-});
 
 
 
@@ -501,37 +533,46 @@ app.delete('/users/:id', authenticateToken, (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 // Create or Update Deliverable Detail
 app.post('/deliverable_details/:project_id/:deliverable_id', authenticateToken, async (req, res) => {
-    const deliverable_id = req.params.deliverable_id;
+    const { project_id, deliverable_id } = req.params;
     try {
         let { task_name, category, start_date, end_date, progress, status } = req.body;
         const isAdmin = req.user.role === 'admin';
 
-        console.log('Deliverable ID:', deliverable_id, 'Task Name:', task_name, 'Category:', category, 'Start Date:', start_date, 'End Date:', end_date, 'Progress:', progress, 'Status:', status);
-        // Ensure the user has permission to modify the deliverable detail
-        const deliverableCheckQuery = promisify(db.query).bind(db);
-        const deliverableCheck = await deliverableCheckQuery('SELECT * FROM deliverables WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE user_id = ?)', [deliverable_id, req.user.id]);
+        console.log('Deliverable ID:', deliverable_id, 'Project ID:', project_id, 'User:', req.user.id);
 
-        if (!isAdmin && deliverableCheck.length === 0) {
-            return res.status(403).json({ message: 'Forbidden: Access denied' });
+        // Ensure the user is assigned to the project
+        const permissionCheckQuery = promisify(db.query).bind(db);
+        const permissionCheck = await permissionCheckQuery(`
+            SELECT 1 FROM project_users WHERE project_id = ? AND user_id = ?`,
+            [project_id, req.user.id]
+        );
+
+        if (!isAdmin && permissionCheck.length === 0) {
+            return res.status(403).json({ message: 'Forbidden: You are not assigned to this project' });
         }
 
-        if (!start_date) {
-            start_date = new Date().toISOString().split('T')[0];
-        }
-
-        if (!end_date) {
-            end_date = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0];
-        }
-
-        if (!deliverable_id) {
-            return res.status(400).json({ message: 'Missing required fields' });
-        }
+        if (!start_date) start_date = new Date().toISOString().split('T')[0];
+        if (!end_date) end_date = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0];
 
         const query = promisify(db.query).bind(db);
         const result = await query(
-            'INSERT INTO deliverable_details (deliverable_id, task_name, category, start_date, end_date, progress, status) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE task_name = VALUES(task_name), category = VALUES(category), start_date = VALUES(start_date), end_date = VALUES(end_date), progress = VALUES(progress), status = VALUES(status)',
+            `INSERT INTO deliverable_details (deliverable_id, task_name, category, start_date, end_date, progress, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE task_name = VALUES(task_name), category = VALUES(category), 
+             start_date = VALUES(start_date), end_date = VALUES(end_date), progress = VALUES(progress), status = VALUES(status)`,
             [deliverable_id, task_name, category, start_date, end_date, progress, status]
         );
 
@@ -548,11 +589,16 @@ app.get('/deliverable_details/:deliverable_id', authenticateToken, async (req, r
         const { deliverable_id } = req.params;
         const isAdmin = req.user.role === 'admin';
 
-        // Ensure the user has permission to access deliverable details
-        const deliverableCheckQuery = promisify(db.query).bind(db);
-        const deliverableCheck = await deliverableCheckQuery('SELECT * FROM deliverables WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE user_id = ?)', [deliverable_id, req.user.id]);
+        // Ensure the user has permission
+        const permissionCheckQuery = promisify(db.query).bind(db);
+        const permissionCheck = await permissionCheckQuery(`
+            SELECT 1 FROM project_users 
+            WHERE project_id IN (SELECT project_id FROM deliverables WHERE id = ?) 
+            AND user_id = ?`,
+            [deliverable_id, req.user.id]
+        );
 
-        if (!isAdmin && deliverableCheck.length === 0) {
+        if (!isAdmin && permissionCheck.length === 0) {
             return res.status(403).json({ message: 'Forbidden: Access denied' });
         }
 
@@ -571,8 +617,8 @@ app.get('/deliverable_details/:deliverable_id', authenticateToken, async (req, r
 });
 
 // Update Deliverable Detail
-app.put('/deliverable_details/:project_id/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
+app.put('/deliverable_details/:project_id/:id', authenticateToken, async (req, res) => {
+    const { project_id, id } = req.params;
     const updates = req.body;
 
     if (!updates || Object.keys(updates).length === 0) {
@@ -584,6 +630,17 @@ app.put('/deliverable_details/:project_id/:id', authenticateToken, (req, res) =>
 
     if (updateFields.length === 0) {
         return res.status(400).json({ message: 'Invalid deliverable detail field(s) provided' });
+    }
+
+    // Ensure user is assigned to the project
+    const permissionCheckQuery = promisify(db.query).bind(db);
+    const permissionCheck = await permissionCheckQuery(`
+        SELECT 1 FROM project_users WHERE project_id = ? AND user_id = ?`,
+        [project_id, req.user.id]
+    );
+
+    if (!req.user.role === 'admin' && permissionCheck.length === 0) {
+        return res.status(403).json({ message: 'Forbidden: You are not assigned to this project' });
     }
 
     let query = `UPDATE deliverable_details SET `;
@@ -609,29 +666,30 @@ app.put('/deliverable_details/:project_id/:id', authenticateToken, (req, res) =>
 });
 
 // Delete Deliverable Detail
-app.delete('/deliverable_details/:deliverable/:id', authenticateToken, (req, res) => {
-    const { deliverable, id } = req.params;
+app.delete('/deliverable_details/:project_id/:id', authenticateToken, async (req, res) => {
+    const { project_id, id } = req.params;
 
     // Validate ID inputs
-    const deliverableId = parseInt(deliverable, 10);
+    const projectId = parseInt(project_id, 10);
     const taskId = parseInt(id, 10);
 
-    if (isNaN(deliverableId) || isNaN(taskId)) {
-        return res.status(400).json({ message: 'Invalid task ID or deliverable ID' });
+    if (isNaN(projectId) || isNaN(taskId)) {
+        return res.status(400).json({ message: 'Invalid task ID or project ID' });
+    }
+
+    // Ensure user has access to the project
+    const permissionCheckQuery = promisify(db.query).bind(db);
+    const permissionCheck = await permissionCheckQuery(`
+        SELECT 1 FROM project_users WHERE project_id = ? AND user_id = ?`,
+        [projectId, req.user.id]
+    );
+
+    if (!req.user.role === 'admin' && permissionCheck.length === 0) {
+        return res.status(403).json({ message: 'Forbidden: You are not assigned to this project' });
     }
 
     let query = `DELETE FROM deliverable_details WHERE id = ?`;
     let queryParams = [taskId];
-
-    // Restrict deletion for non-admin users
-    if (req.user.role !== 'admin') {
-        query += ` AND deliverable_id IN (
-                    SELECT id FROM deliverables 
-                    WHERE project_id IN (
-                        SELECT id FROM projects WHERE user_id = ? AND id = ?
-                    ))`;
-        queryParams.push(req.user.id, taskId);
-    }
 
     db.query(query, queryParams, (err, results) => {
         if (err) {
@@ -665,39 +723,6 @@ app.delete('/deliverable_details/:deliverable/:id', authenticateToken, (req, res
 
 
 
-
-
-// Create or Update Deliverable
-app.post('/deliverables/:id', authenticateToken, async (req, res) => {
-    try {
-        let { project_id, name, category, start_date, end_date, progress, status } = req.body;
-        const isAdmin = req.user.role === 'admin';
-
-        // Ensure the user has permission to modify the deliverable
-        const projectCheckQuery = promisify(db.query).bind(db);
-        const projectCheck = await projectCheckQuery('SELECT * FROM projects WHERE id = ? AND user_id = ?', [project_id, req.user.id]);
-
-        if (!isAdmin && projectCheck.length === 0) {
-            return res.status(403).json({ message: 'Forbidden: Access denied' });
-        }
-
-        if (!project_id || !name || !category || !start_date || !end_date || progress === undefined || status === undefined) {
-            return res.status(400).json({ message: 'Missing required fields' });
-        }
-
-        const query = promisify(db.query).bind(db);
-        const result = await query(
-            'INSERT INTO deliverables (project_id, name, category, start_date, end_date, progress, status) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name), category = VALUES(category), start_date = VALUES(start_date), end_date = VALUES(end_date), progress = VALUES(progress), status = VALUES(status)',
-            [project_id, name, category, start_date, end_date, progress, status]
-        );
-
-        res.status(201).json({ message: 'Deliverable saved successfully', id: result.insertId });
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ message: 'Database error', error: error.message });
-    }
-});
-
 // Retrieve Deliverables by Project ID
 app.get('/deliverables/:project_id', authenticateToken, async (req, res) => {
     try {
@@ -706,14 +731,17 @@ app.get('/deliverables/:project_id', authenticateToken, async (req, res) => {
 
         // Ensure the user has permission to access deliverables of the project
         const projectCheckQuery = promisify(db.query).bind(db);
-        const projectCheck = await projectCheckQuery('SELECT * FROM projects WHERE id = ? AND user_id = ?', [project_id, req.user.id]);
+        const projectCheck = await projectCheckQuery(
+            `SELECT 1 FROM project_users WHERE project_id = ? AND user_id = ?`,
+            [project_id, req.user.id]
+        );
 
         if (!isAdmin && projectCheck.length === 0) {
             return res.status(403).json({ message: 'Forbidden: Access denied' });
         }
 
         const query = promisify(db.query).bind(db);
-        const results = await query('SELECT * FROM deliverables WHERE project_id = ?', [project_id]);
+        const results = await query(`SELECT * FROM deliverables WHERE project_id = ?`, [project_id]);
 
         if (results.length === 0) {
             return res.status(404).json({ message: 'No deliverables found for this project' });
@@ -726,8 +754,218 @@ app.get('/deliverables/:project_id', authenticateToken, async (req, res) => {
     }
 });
 
-// Update Deliverable
-app.put('/deliverables/:id', authenticateToken, (req, res) => {
+app.put('/deliverables/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        if (!updates || Object.keys(updates).length === 0) {
+            return res.status(400).json({ message: 'No updates provided' });
+        }
+
+        const allowedKeys = ['name', 'category', 'start_date', 'end_date', 'progress', 'status', 'project_id'];
+        const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
+
+        if (updateFields.length === 0) {
+            return res.status(400).json({ message: 'Invalid deliverable field(s) provided' });
+        }
+
+        const query = promisify(db.query).bind(db);
+
+        // Check if the deliverable exists
+        const deliverableCheck = await query(`SELECT id FROM deliverables WHERE id = ?`, [id]);
+
+        if (deliverableCheck.length === 0) {
+            return res.status(404).json({ message: 'Deliverable not found' });
+        }
+
+        let updateQuery = `UPDATE deliverables SET `;
+        let queryParams = [];
+
+        updateFields.forEach((field, index) => {
+            updateQuery += index > 0 ? `, ?? = ?` : `?? = ?`;
+            queryParams.push(field, updates[field]);
+        });
+
+        updateQuery += ` WHERE id = ?`;
+        queryParams.push(id);
+
+        const updateResult = await query(updateQuery, queryParams);
+
+        if (updateResult.affectedRows === 0) {
+            return res.status(404).json({ message: 'Deliverable not found or no changes made' });
+        }
+
+        res.json({ message: `Deliverable ${id} updated successfully` });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
+});
+
+
+// Add a new Deliverable (Admin only)
+app.post('/deliverables/:id', authenticateToken, async (req, res) => {
+    try {
+        const isAdmin = req.user.role === 'admin';
+
+        if (!isAdmin) {
+            return res.status(403).json({ message: 'Unauthorized: Only admins can add deliverables' });
+        }
+
+        const project_id = parseInt(req.params.id, 10);
+
+        if (isNaN(project_id)) {
+            return res.status(400).json({ message: 'Invalid project ID' });
+        }
+
+        let { name, category, start_date, end_date, progress, status } = req.body;
+
+        if (!start_date) {
+            start_date = new Date().toISOString().split('T')[0]; // Default to today
+        }
+        if (!end_date) {
+            end_date = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0]; // Default to next month
+        }
+
+        const query = promisify(db.query).bind(db);
+
+        // Ensure the associated project exists
+        const projectCheck = await query(`SELECT id FROM projects WHERE id = ?`, [project_id]);
+
+        if (projectCheck.length === 0) {
+            return res.status(404).json({ message: 'Project not found' });
+        }
+
+        // Insert the new deliverable
+        await query(
+            `INSERT INTO deliverables (name, category, start_date, end_date, progress, status, project_id) 
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [name, category, start_date, end_date, progress || 0, status, project_id]
+        );
+
+        res.status(201).json({ message: 'Deliverable added successfully' });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
+});
+
+// Delete Deliverable
+app.delete('/deliverables/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Ensure the user has permission to delete the deliverable
+        const projectCheckQuery = promisify(db.query).bind(db);
+        const projectCheck = await projectCheckQuery(
+            `SELECT 1 FROM deliverables d 
+             JOIN project_users pu ON d.project_id = pu.project_id 
+             WHERE d.id = ? AND pu.user_id = ?`,
+            [id, req.user.id]
+        );
+
+        if (projectCheck.length === 0 && req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Forbidden: Access denied' });
+        }
+
+        const query = promisify(db.query).bind(db);
+        const results = await query(`DELETE FROM deliverables WHERE id = ?`, [id]);
+
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ message: 'Deliverable not found or unauthorized' });
+        }
+
+        res.json({ message: `Deliverable ${id} deleted successfully` });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Retrieve all project-user relationships (Admin only)
+app.get('/project-users', authenticateToken, (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+    }
+
+    db.query('SELECT id, project_id, user_id, role FROM project_users', (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        res.json(results);
+    });
+});
+
+// Retrieve users for a specific user (Admin only or self)
+app.get('/projects/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+
+    db.query('SELECT u.id, u.name, u.email, pu.role FROM users u JOIN project_users pu ON u.id = pu.user_id WHERE pu.project_id = ?', [id], (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        res.json(results);
+    });
+});
+
+// Create a new project-user relationship (Admin only)
+app.post('/project-users', authenticateToken, (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const { project_id, user_id, role } = '';
+
+    db.query('INSERT INTO project_users (project_id, user_id, role) VALUES (?, ?, ?)', [project_id, user_id, role], (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        res.status(201).json({ message: 'User added to project successfully' });
+    });
+});
+
+// Update a field in a project-user relationship (Admin only)
+app.put('/project-users/:id', authenticateToken, (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+    }
+
     const { id } = req.params;
     const updates = req.body;
 
@@ -735,14 +973,14 @@ app.put('/deliverables/:id', authenticateToken, (req, res) => {
         return res.status(400).json({ message: 'No updates provided' });
     }
 
-    const allowedKeys = ['name', 'category', 'start_date', 'end_date', 'progress', 'status'];
+    const allowedKeys = ['project_id', 'user_id', 'role'];
     const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
 
     if (updateFields.length === 0) {
-        return res.status(400).json({ message: 'Invalid deliverable field(s) provided' });
+        return res.status(400).json({ message: 'Invalid project-user field(s) provided' });
     }
 
-    let query = `UPDATE deliverables SET `;
+    let query = `UPDATE project_users SET `;
     let queryParams = [];
 
     updateFields.forEach((field, index) => {
@@ -754,79 +992,26 @@ app.put('/deliverables/:id', authenticateToken, (req, res) => {
     queryParams.push(id);
 
     db.query(query, queryParams, (err, results) => {
-        if (err) {
-            return res.status(500).json({ message: 'Database error', error: err });
-        }
-        if (results.affectedRows === 0) {
-            return res.status(404).json({ message: 'Deliverable not found or unauthorized' });
-        }
-        res.json({ message: `Deliverable ${id} updated successfully` });
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        if (results.affectedRows === 0) return res.status(404).json({ message: 'Record not found' });
+        res.json({ message: `Project-user relationship ${id} updated successfully` });
     });
 });
 
-// Delete Deliverable
-app.delete('/deliverables/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
-
-    let query = `DELETE FROM deliverables WHERE id = ?`;
-    let queryParams = [id];
-
+// Remove a user from a project (Admin only)
+app.delete('/project-users/:id', authenticateToken, (req, res) => {
     if (req.user.role !== 'admin') {
-        query += ` AND project_id IN (SELECT id FROM projects WHERE user_id = ?)`;
-        queryParams.push(req.user.id);
+        return res.status(403).json({ message: 'Access denied' });
     }
 
-    db.query(query, queryParams, (err, results) => {
-        if (err) {
-            return res.status(500).json({ message: 'Database error', error: err });
-        }
-        if (results.affectedRows === 0) {
-            return res.status(404).json({ message: 'Deliverable not found or unauthorized' });
-        }
-        res.json({ message: `Deliverable ${id} deleted successfully` });
+    const { id } = req.params;
+
+    db.query('DELETE FROM project_users WHERE id = ?', [id], (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        if (results.affectedRows === 0) return res.status(404).json({ message: 'Record not found' });
+        res.json({ message: 'User removed from project successfully' });
     });
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

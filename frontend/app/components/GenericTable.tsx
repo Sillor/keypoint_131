@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import SearchBar from './SearchBar';
 import DropdownFilter from './DropdownFilter';
 import Table from './Table';
+import { debounce } from 'lodash';
 
 interface GenericEntity {
   id: number;
@@ -24,6 +25,7 @@ interface GenericTablePageProps<T extends GenericEntity> {
   allowAddRow?: boolean;
   showRouteButton?: boolean;
   routeBasePath?: string;
+  showDeleteButton?: boolean;
 }
 
 const GenericTablePage = <T extends GenericEntity>({
@@ -34,6 +36,7 @@ const GenericTablePage = <T extends GenericEntity>({
   showRouteButton,
   routeBasePath,
   userId,
+  showDeleteButton = true,
 }: GenericTablePageProps<T>) => {
   const [tableData, setTableData] = useState<T[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,40 +44,24 @@ const GenericTablePage = <T extends GenericEntity>({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const showRouteButtonValue =
-    showRouteButton !== undefined ? showRouteButton : false;
-  const routeBasePathValue =
-    routeBasePath !== undefined ? routeBasePath : 'route';
-
   const fetchTableData = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
-      let response;
-
-      if (endpoint === 'projects') {
-        response = await fetch(`http://localhost:3333/${endpoint}`, {
+      let response = await fetch(
+        `http://localhost:3333/${endpoint}${userId ? `/${userId}` : ''}`,
+        {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        });
-      } else {
-        response = await fetch(
-          `http://localhost:3333/${endpoint}${userId ? `/${userId}` : ''}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-      }
+        }
+      );
 
       if (response.status === 404) {
-        setTableData([]); // Allow empty table display if 404
+        setTableData([]);
         return;
       }
 
@@ -97,13 +84,10 @@ const GenericTablePage = <T extends GenericEntity>({
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
-      let url;
-
-      if (endpoint === 'deliverable_details') {
-        url = `http://localhost:3333/${endpoint}/${userId}/${id}/`;
-      } else {
-        url = `http://localhost:3333/${endpoint}${id ? `/${id}` : ''}`;
-      }
+      let url =
+        endpoint === 'deliverable_details'
+          ? `http://localhost:3333/${endpoint}/${userId}/${id}/`
+          : `http://localhost:3333/${endpoint}${id ? `/${id}` : ''}`;
 
       const response = await fetch(url, {
         method,
@@ -121,11 +105,14 @@ const GenericTablePage = <T extends GenericEntity>({
     }
   };
 
-  const handleEdit = async (
-    id: string | number,
-    key: keyof T,
-    value: string
-  ) => {
+  const debouncedHandleRequest = useCallback(
+    debounce(async (id: number, key: keyof T, value: string) => {
+      await handleRequest('PUT', id, { [key]: value });
+    }, 500),
+    []
+  );
+
+  const handleEdit = (id: string | number, key: keyof T, value: string) => {
     const formattedValue =
       key === 'target' ? (value.trim() === '' ? null : Number(value)) : value;
     setTableData((prev) =>
@@ -133,7 +120,7 @@ const GenericTablePage = <T extends GenericEntity>({
         item.id === Number(id) ? { ...item, [key]: formattedValue } : item
       )
     );
-    await handleRequest('PUT', Number(id), { [key]: formattedValue });
+    debouncedHandleRequest(Number(id), key, String(formattedValue));
   };
 
   const handleAddRow = async () => {
@@ -207,8 +194,9 @@ const GenericTablePage = <T extends GenericEntity>({
           headers={columns}
           onEdit={handleEdit}
           onRemove={handleRemoveRow}
-          showRouteButton={showRouteButtonValue}
-          routeBasePath={routeBasePathValue}
+          showDeleteButton={showDeleteButton}
+          showRouteButton={showRouteButton}
+          routeBasePath={routeBasePath}
         />
       </div>
     </div>

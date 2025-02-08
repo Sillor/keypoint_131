@@ -11,12 +11,13 @@ interface TableProps<T> {
   data: T[];
   headers: { key: keyof T; label: string; editable?: boolean }[];
   onEdit: (id: number | string, key: keyof T, value: string) => void;
-  onRemove: (id: number | string) => void;
+  onRemove?: (id: number | string) => void;
   clickable?: boolean;
   renderCell?: (item: T, key: keyof T) => React.ReactNode;
   onRowClick?: (id: number | string) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
   showRouteButton?: boolean;
+  showDeleteButton?: boolean;
   routeBasePath?: string;
 }
 
@@ -30,6 +31,7 @@ const Table = <T extends { id: number | string }>({
   onEdit,
   onKeyDown,
   showRouteButton = false,
+  showDeleteButton = true,
   routeBasePath = 'route',
 }: TableProps<T>) => {
   const [editingRow, setEditingRow] = useState<number | string | null>(null);
@@ -120,15 +122,17 @@ const Table = <T extends { id: number | string }>({
                   </TableCell>
                 ))}
                 <TableCell className="flex space-x-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemove(row.original.id);
-                    }}
-                    className="px-2 py-1 bg-red-600 text-white rounded-md hover:bg-red-700"
-                  >
-                    Remove
-                  </button>
+                  {showDeleteButton && onRemove && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemove(row.original.id);
+                      }}
+                      className="px-2 py-1 bg-red-600 text-white rounded-md hover:bg-red-700"
+                    >
+                      Remove
+                    </button>
+                  )}
 
                   {showRouteButton && (
                     <button
@@ -136,9 +140,9 @@ const Table = <T extends { id: number | string }>({
                         e.stopPropagation();
                         router.push(`/${routeBasePath}/${row.original.id}`);
                       }}
-                      className="px-2 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                      className="px-2 py-1 text-white text-xl rounded-md hover:bg-gray-300"
                     >
-                      ↪️
+                      ➡️
                     </button>
                   )}
                 </TableCell>
