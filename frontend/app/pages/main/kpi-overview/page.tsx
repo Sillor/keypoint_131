@@ -5,6 +5,7 @@ const KPIPage = () => (
     title="KPI Table"
     endpoint="kpi"
     columns={[
+      { key: 'id', label: 'id', editable: false },
       { key: 'category', label: 'Category', editable: true },
       { key: 'kpi', label: 'KPI', editable: true },
       { key: 'description', label: 'Description', editable: true },

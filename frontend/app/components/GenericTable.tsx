@@ -28,14 +28,14 @@ const GenericTablePage = <T extends GenericEntity>({
   columns,
 }: GenericTablePageProps<T>) => {
   const [tableData, setTableData] = useState<T[]>([]);
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [filterValue, setFilterValue] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterValue, setFilterValue] = useState('');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTableData = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
@@ -45,11 +45,11 @@ const GenericTablePage = <T extends GenericEntity>({
           'Content-Type': 'application/json',
         },
       });
-
       if (!response.ok) throw new Error(await response.text());
+
       setTableData(await response.json());
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -79,7 +79,7 @@ const GenericTablePage = <T extends GenericEntity>({
       if (!response.ok) throw new Error(await response.text());
       return response.json();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : 'Unknown error');
     }
   };
 
@@ -105,8 +105,9 @@ const GenericTablePage = <T extends GenericEntity>({
         undefined,
         Object.fromEntries(columns.map(({ key }) => [key, '']))
       )
-    )
+    ) {
       fetchTableData();
+    }
   };
 
   const handleRemoveRow = async (id: string | number) => {
@@ -124,23 +125,26 @@ const GenericTablePage = <T extends GenericEntity>({
       </div>
     );
 
-  const filteredData = tableData
-    .filter((item) => {
-      // Apply Search
-      if (searchTerm) {
-        return columns.some(({ key }) =>
-          String(item[key]).toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      }
-      return true;
-    })
-    .filter((item) => {
-      // Apply Filter
-      if (filterValue && filterValue !== 'All Categories') {
-        return String(item.category || 'Unknown') === filterValue;
-      }
-      return true;
-    });
+  if (loading)
+    return <div className="text-center text-gray-700">Loading...</div>;
+  if (error)
+    return (
+      <div className="text-center text-red-600 bg-red-100 p-4 rounded-md">
+        Error: {error}
+      </div>
+    );
+
+  const filteredData = tableData.filter(
+    (item) =>
+      (searchTerm
+        ? columns.some(({ key }) =>
+            String(item[key]).toLowerCase().includes(searchTerm.toLowerCase())
+          )
+        : true) &&
+      (filterValue && filterValue !== 'All Categories'
+        ? String(item.category || 'Unknown') === filterValue
+        : true)
+  );
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
@@ -153,8 +157,10 @@ const GenericTablePage = <T extends GenericEntity>({
             onChange={setFilterValue}
             options={[
               'All Categories',
-              ...new Set(
-                tableData.map((item) => String(item.category || 'Unknown'))
+              ...Array.from(
+                new Set(
+                  tableData.map((item) => String(item.category || 'Unknown'))
+                )
               ),
             ]}
             label="All Categories"

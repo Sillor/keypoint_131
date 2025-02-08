@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   useReactTable,
   getCoreRowModel,
@@ -15,6 +16,8 @@ interface TableProps<T> {
   renderCell?: (item: T, key: keyof T) => React.ReactNode;
   onRowClick?: (id: number | string) => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
+  showRouteButton?: boolean;
+  routeBasePath?: string;
 }
 
 const Table = <T extends { id: number | string }>({
@@ -26,8 +29,11 @@ const Table = <T extends { id: number | string }>({
   renderCell = (item: T, key: keyof T) => item[key] as React.ReactNode,
   onEdit,
   onKeyDown,
+  showRouteButton = false,
+  routeBasePath = 'route',
 }: TableProps<T>) => {
   const [editingRow, setEditingRow] = useState<number | string | null>(null);
+  const router = useRouter(); // Hook for navigation
 
   const columns: ColumnDef<T>[] = headers.map((header) => ({
     accessorKey: header.key,
@@ -113,7 +119,7 @@ const Table = <T extends { id: number | string }>({
                     )}
                   </TableCell>
                 ))}
-                <TableCell className="border border-gray-200">
+                <TableCell className="border border-gray-200 flex space-x-2">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -123,6 +129,18 @@ const Table = <T extends { id: number | string }>({
                   >
                     Remove
                   </button>
+
+                  {showRouteButton && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/${routeBasePath}/${row.original.id}`);
+                      }}
+                      className="px-2 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                    >
+                      ↪️
+                    </button>
+                  )}
                 </TableCell>
               </tr>
             ))}
