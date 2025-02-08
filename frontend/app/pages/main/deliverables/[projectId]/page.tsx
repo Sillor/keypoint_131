@@ -5,12 +5,15 @@ import GenericTablePage from '../../../../components/GenericTable';
 
 const DeliverablesPage = () => {
   const params = useParams();
-  const id = Array.isArray(params?.id) ? params.id[0] : params?.id ?? '';
+  const projectId = Array.isArray(params?.projectId)
+    ? params.projectId[0]
+    : params?.projectId ?? '';
+
   return (
     <GenericTablePage
       title="Deliverables Table"
       endpoint="deliverables"
-      userId={id}
+      userId={projectId}
       columns={[
         { key: 'id', label: 'ID', editable: false },
         { key: 'project_id', label: 'Project ID', editable: false },
@@ -21,6 +24,8 @@ const DeliverablesPage = () => {
         { key: 'progress', label: 'Progress', editable: true },
         { key: 'status', label: 'Status', editable: false },
       ]}
+      showRouteButton={true}
+      routeBasePath={`./pages/main/deliverables/${projectId}/`}
     />
   );
 };

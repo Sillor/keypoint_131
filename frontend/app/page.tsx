@@ -11,7 +11,7 @@ const RedirectHandler = () => {
       typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
     if (token) {
-      router.replace('/pages/main/deliverables');
+      router.replace('/pages/main/projects');
     } else {
       router.replace('/pages/auth/login');
     }

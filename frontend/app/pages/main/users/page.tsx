@@ -14,6 +14,7 @@ const UsersPage = () => {
       ]}
       showRouteButton={true}
       routeBasePath="./pages/main/kpi"
+      allowAddRow={false}
     />
   );
 };

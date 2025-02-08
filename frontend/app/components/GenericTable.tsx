@@ -52,15 +52,26 @@ const GenericTablePage = <T extends GenericEntity>({
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
-      const response = await fetch(
-        `http://localhost:3333/${endpoint}${userId ? `/${userId}` : ''}`,
-        {
+      let response;
+
+      if (endpoint === 'projects') {
+        response = await fetch(`http://localhost:3333/${endpoint}`, {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }
-      );
+        });
+      } else {
+        response = await fetch(
+          `http://localhost:3333/${endpoint}${userId ? `/${userId}` : ''}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
 
       if (response.status === 404) {
         setTableData([]); // Allow empty table display if 404

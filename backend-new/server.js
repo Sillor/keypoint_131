@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
 const { promisify } = require('util');
+const { start } = require('repl');
 
 dotenv.config();
 
@@ -148,8 +149,9 @@ app.post('/projects/:id', authenticateToken, async (req, res) => {
             return res.status(403).json({ message: 'Forbidden: Access denied' });
         }
 
-        if (!name || !category || !start_date || !end_date || status === undefined) {
-            return res.status(400).json({ message: 'Missing required fields' });
+        if (!start_date || !end_date) {
+            start_date = new Date().toISOString().split('T')[0];
+            end_date = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0];
         }
 
         const query = promisify(db.query).bind(db);
@@ -499,37 +501,56 @@ app.delete('/users/:id', authenticateToken, (req, res) => {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Retrieve deliverables (admin gets all, user gets only their deliverables linked to projects they own)
-app.get('/deliverables', authenticateToken, async (req, res) => {
+// Create or Update Deliverable Detail
+app.post('/deliverable_details/:id', authenticateToken, async (req, res) => {
     try {
-        const query = promisify(db.query).bind(db);
-        let results;
+        let { deliverable_id, task_name, category, start_date, end_date, progress, status } = req.body;
+        const isAdmin = req.user.role === 'admin';
 
-        if (req.user.role === 'admin') {
-            results = await query('SELECT * FROM deliverables');
-        } else {
-            results = await query('SELECT * FROM deliverables WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?)', [req.user.id]);
+        // Ensure the user has permission to modify the deliverable detail
+        const deliverableCheckQuery = promisify(db.query).bind(db);
+        const deliverableCheck = await deliverableCheckQuery('SELECT * FROM deliverables WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE user_id = ?)', [deliverable_id, req.user.id]);
+
+        if (!isAdmin && deliverableCheck.length === 0) {
+            return res.status(403).json({ message: 'Forbidden: Access denied' });
         }
 
+        if (!deliverable_id || !task_name || !category || !start_date || !end_date || progress === undefined || status === undefined) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        const query = promisify(db.query).bind(db);
+        const result = await query(
+            'INSERT INTO deliverable_details (deliverable_id, task_name, category, start_date, end_date, progress, status) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE task_name = VALUES(task_name), category = VALUES(category), start_date = VALUES(start_date), end_date = VALUES(end_date), progress = VALUES(progress), status = VALUES(status)',
+            [deliverable_id, task_name, category, start_date, end_date, progress, status]
+        );
+
+        res.status(201).json({ message: 'Deliverable detail saved successfully', id: result.insertId });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
+});
+
+// Retrieve Deliverable Details by Deliverable ID
+app.get('/deliverable_details/:deliverable_id', authenticateToken, async (req, res) => {
+    try {
+        const { deliverable_id } = req.params;
+        const isAdmin = req.user.role === 'admin';
+
+        // Ensure the user has permission to access deliverable details
+        const deliverableCheckQuery = promisify(db.query).bind(db);
+        const deliverableCheck = await deliverableCheckQuery('SELECT * FROM deliverables WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE user_id = ?)', [deliverable_id, req.user.id]);
+
+        if (!isAdmin && deliverableCheck.length === 0) {
+            return res.status(403).json({ message: 'Forbidden: Access denied' });
+        }
+
+        const query = promisify(db.query).bind(db);
+        const results = await query('SELECT * FROM deliverable_details WHERE deliverable_id = ?', [deliverable_id]);
+
         if (results.length === 0) {
-            return res.status(404).json({ message: 'No deliverables found' });
+            return res.status(404).json({ message: 'No deliverable details found for this deliverable' });
         }
 
         res.json(results);
@@ -538,6 +559,88 @@ app.get('/deliverables', authenticateToken, async (req, res) => {
         res.status(500).json({ message: 'Database error', error: error.message });
     }
 });
+
+// Update Deliverable Detail
+app.put('/deliverable_details/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+
+    if (!updates || Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: 'No updates provided' });
+    }
+
+    const allowedKeys = ['task_name', 'category', 'start_date', 'end_date', 'progress', 'status'];
+    const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
+
+    if (updateFields.length === 0) {
+        return res.status(400).json({ message: 'Invalid deliverable detail field(s) provided' });
+    }
+
+    let query = `UPDATE deliverable_details SET `;
+    let queryParams = [];
+
+    updateFields.forEach((field, index) => {
+        query += index > 0 ? `, ?? = ?` : `?? = ?`;
+        queryParams.push(field, updates[field]);
+    });
+
+    query += ` WHERE id = ?`;
+    queryParams.push(id);
+
+    db.query(query, queryParams, (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Database error', error: err });
+        }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ message: 'Deliverable detail not found or unauthorized' });
+        }
+        res.json({ message: `Deliverable detail ${id} updated successfully` });
+    });
+});
+
+// Delete Deliverable Detail
+app.delete('/deliverable_details/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+
+    let query = `DELETE FROM deliverable_details WHERE id = ?`;
+    let queryParams = [id];
+
+    if (req.user.role !== 'admin') {
+        query += ` AND deliverable_id IN (SELECT id FROM deliverables WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?))`;
+        queryParams.push(req.user.id);
+    }
+
+    db.query(query, queryParams, (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Database error', error: err });
+        }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ message: 'Deliverable detail not found or unauthorized' });
+        }
+        res.json({ message: `Deliverable detail ${id} deleted successfully` });
+    });
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Create or Update Deliverable
 app.post('/deliverables/:id', authenticateToken, async (req, res) => {
