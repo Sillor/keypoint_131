@@ -13,6 +13,7 @@ const DeliverableDetailsPage = () => {
   const deliverableId = Array.isArray(params?.deliverableId)
     ? params.deliverableId[0]
     : params?.deliverableId ?? '';
+    
   return (
     <GenericTablePage
       title="Deliverable Details Table"

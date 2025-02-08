@@ -502,11 +502,13 @@ app.delete('/users/:id', authenticateToken, (req, res) => {
 
 
 // Create or Update Deliverable Detail
-app.post('/deliverable_details/:id', authenticateToken, async (req, res) => {
+app.post('/deliverable_details/:project_id/:deliverable_id', authenticateToken, async (req, res) => {
+    const deliverable_id = req.params.deliverable_id;
     try {
-        let { deliverable_id, task_name, category, start_date, end_date, progress, status } = req.body;
+        let { task_name, category, start_date, end_date, progress, status } = req.body;
         const isAdmin = req.user.role === 'admin';
 
+        console.log('Deliverable ID:', deliverable_id, 'Task Name:', task_name, 'Category:', category, 'Start Date:', start_date, 'End Date:', end_date, 'Progress:', progress, 'Status:', status);
         // Ensure the user has permission to modify the deliverable detail
         const deliverableCheckQuery = promisify(db.query).bind(db);
         const deliverableCheck = await deliverableCheckQuery('SELECT * FROM deliverables WHERE id = ? AND project_id IN (SELECT id FROM projects WHERE user_id = ?)', [deliverable_id, req.user.id]);
@@ -515,7 +517,15 @@ app.post('/deliverable_details/:id', authenticateToken, async (req, res) => {
             return res.status(403).json({ message: 'Forbidden: Access denied' });
         }
 
-        if (!deliverable_id || !task_name || !category || !start_date || !end_date || progress === undefined || status === undefined) {
+        if (!start_date) {
+            start_date = new Date().toISOString().split('T')[0];
+        }
+
+        if (!end_date) {
+            end_date = new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0];
+        }
+
+        if (!deliverable_id) {
             return res.status(400).json({ message: 'Missing required fields' });
         }
 
@@ -561,7 +571,7 @@ app.get('/deliverable_details/:deliverable_id', authenticateToken, async (req, r
 });
 
 // Update Deliverable Detail
-app.put('/deliverable_details/:id', authenticateToken, (req, res) => {
+app.put('/deliverable_details/:project_id/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
@@ -599,27 +609,42 @@ app.put('/deliverable_details/:id', authenticateToken, (req, res) => {
 });
 
 // Delete Deliverable Detail
-app.delete('/deliverable_details/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
+app.delete('/deliverable_details/:deliverable/:id', authenticateToken, (req, res) => {
+    const { deliverable, id } = req.params;
+
+    // Validate ID inputs
+    const deliverableId = parseInt(deliverable, 10);
+    const taskId = parseInt(id, 10);
+
+    if (isNaN(deliverableId) || isNaN(taskId)) {
+        return res.status(400).json({ message: 'Invalid task ID or deliverable ID' });
+    }
 
     let query = `DELETE FROM deliverable_details WHERE id = ?`;
-    let queryParams = [id];
+    let queryParams = [taskId];
 
+    // Restrict deletion for non-admin users
     if (req.user.role !== 'admin') {
-        query += ` AND deliverable_id IN (SELECT id FROM deliverables WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?))`;
-        queryParams.push(req.user.id);
+        query += ` AND deliverable_id IN (
+                    SELECT id FROM deliverables 
+                    WHERE project_id IN (
+                        SELECT id FROM projects WHERE user_id = ? AND id = ?
+                    ))`;
+        queryParams.push(req.user.id, taskId);
     }
 
     db.query(query, queryParams, (err, results) => {
         if (err) {
-            return res.status(500).json({ message: 'Database error', error: err });
+            console.error('Database Error:', err);
+            return res.status(500).json({ message: 'Database error occurred', error: err.message });
         }
         if (results.affectedRows === 0) {
             return res.status(404).json({ message: 'Deliverable detail not found or unauthorized' });
         }
-        res.json({ message: `Deliverable detail ${id} deleted successfully` });
+        res.json({ message: `Deliverable detail ${taskId} deleted successfully` });
     });
 });
+
 
 
 

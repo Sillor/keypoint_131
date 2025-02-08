@@ -119,7 +119,7 @@ const Table = <T extends { id: number | string }>({
                     )}
                   </TableCell>
                 ))}
-                <TableCell className="border border-gray-200 flex space-x-2">
+                <TableCell className="flex space-x-2">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

@@ -97,17 +97,22 @@ const GenericTablePage = <T extends GenericEntity>({
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
-      const response = await fetch(
-        `http://localhost:3333/${endpoint}${id ? `/${id}` : ''}`,
-        {
-          method,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: body ? JSON.stringify(body) : undefined,
-        }
-      );
+      let url;
+
+      if (endpoint === 'deliverable_details') {
+        url = `http://localhost:3333/${endpoint}/${userId}/${id}/`;
+      } else {
+        url = `http://localhost:3333/${endpoint}${id ? `/${id}` : ''}`;
+      }
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
 
       if (!response.ok) throw new Error(await response.text());
       return response.json();

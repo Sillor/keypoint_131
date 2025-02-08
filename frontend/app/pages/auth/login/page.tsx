@@ -23,10 +23,8 @@ const LoginPage: React.FC = () => {
 
       if (response.ok) {
         console.log('Login successful', data);
-        // Store token in localStorage or sessionStorage (if applicable)
         localStorage.setItem('token', data.token);
-        // Redirect or update UI after successful login
-        window.location.href = '/pages/main/deliverables';  
+        window.location.href = '/pages/main/projects';
       } else {
         console.error('Login failed:', data.message);
         alert(data.message || 'Login failed. Please try again.');
