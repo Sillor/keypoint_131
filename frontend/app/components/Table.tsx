@@ -1,39 +1,34 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
   ColumnDef,
 } from '@tanstack/react-table';
-import SortAscIcon from './SortAscIcon';
-import SortDescIcon from './SortDescIcon';
 import TableCell from './TableCell';
 
-interface SortConfig {
-  key: string | '';
-  direction: 'asc' | 'desc';
-}
-
-interface TableProps<T extends { id: number | string }> {
+interface TableProps<T> {
   data: T[];
   headers: { key: keyof T; label: string; editable?: boolean }[];
-  sortConfig: SortConfig;
-  onSort: (key: keyof T) => void;
+  onEdit: (id: number | string, key: keyof T, value: string) => void;
+  onRemove: (id: number | string) => void;
   clickable?: boolean;
-  onRowClick?: (id: number | string) => void;
-  onEdit?: (id: number | string, key: keyof T, value: string) => void;
   renderCell?: (item: T, key: keyof T) => React.ReactNode;
+  onRowClick?: (id: number | string) => void;
+  onKeyDown?: (e: React.KeyboardEvent) => void;
 }
 
 const Table = <T extends { id: number | string }>({
   data,
   headers,
-  sortConfig,
-  onSort,
+  onRemove,
   clickable,
   onRowClick,
   renderCell = (item: T, key: keyof T) => item[key] as React.ReactNode,
   onEdit,
+  onKeyDown,
 }: TableProps<T>) => {
+  const [editingRow, setEditingRow] = useState<number | string | null>(null);
+
   const columns: ColumnDef<T>[] = headers.map((header) => ({
     accessorKey: header.key,
     header: header.label,
@@ -45,20 +40,23 @@ const Table = <T extends { id: number | string }>({
     getCoreRowModel: getCoreRowModel(),
   });
 
-  const renderSortIcon = (key: keyof T) => {
-    if (sortConfig.key !== key) return null;
-    return sortConfig.direction === 'asc' ? <SortAscIcon /> : <SortDescIcon />;
-  };
-
   const handleRowClick = (id: number | string) => {
     if (clickable && onRowClick) {
       onRowClick(id);
     }
+    setEditingRow(id);
   };
 
   const handleEdit = (id: number | string, key: keyof T, value: string) => {
-    if (onEdit) {
-      onEdit(id, key, value);
+    onEdit(id, key, value);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      setEditingRow(null);
+    }
+    if (onKeyDown) {
+      onKeyDown(e);
     }
   };
 
@@ -71,32 +69,35 @@ const Table = <T extends { id: number | string }>({
               {headers.map((header) => (
                 <th
                   key={String(header.key)}
-                  className="px-6 py-3 text-sm font-semibold cursor-pointer select-none"
-                  onClick={() => onSort(header.key)}
+                  className="px-6 py-3 text-sm font-semibold cursor-pointer select-none border border-gray-800"
                 >
-                  <div className="flex items-center justify-start gap-2">
-                    <span>{header.label}</span>
-                    {renderSortIcon(header.key)}
-                  </div>
+                  {header.label}
                 </th>
               ))}
+              <th className="px-6 py-3 text-sm font-semibold border border-gray-800">
+                Actions
+              </th>
             </tr>
           </thead>
+
           <tbody>
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className={`border-b ${
-                  clickable ? 'cursor-pointer hover:bg-gray-100' : ''
-                }`}
+                className="border-b border-gray-200 cursor-pointer hover:bg-gray-100"
                 onClick={() => handleRowClick(row.original.id)}
               >
                 {headers.map((header) => (
-                  <TableCell key={String(header.key)}>
-                    {header.editable ? (
+                  <TableCell
+                    key={String(header.key)}
+                    className="border border-gray-200"
+                  >
+                    {header.editable && editingRow === row.original.id ? (
                       <input
                         type="text"
-                        value={row.original[header.key] as string}
+                        value={
+                          (row.original[header.key] as string | number) ?? ''
+                        }
                         onChange={(e) =>
                           handleEdit(
                             row.original.id,
@@ -104,13 +105,25 @@ const Table = <T extends { id: number | string }>({
                             e.target.value
                           )
                         }
-                        className="w-full border border-gray-300 rounded p-1"
+                        onKeyDown={handleKeyDown}
+                        className="w-full border border-gray-200 rounded p-1"
                       />
                     ) : (
                       renderCell(row.original, header.key)
                     )}
                   </TableCell>
                 ))}
+                <TableCell className="border border-gray-200">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemove(row.original.id);
+                    }}
+                    className="px-2 py-1 bg-red-600 text-white rounded-md hover:bg-red-700"
+                  >
+                    Remove
+                  </button>
+                </TableCell>
               </tr>
             ))}
           </tbody>

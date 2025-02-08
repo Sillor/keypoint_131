@@ -195,6 +195,30 @@ app.put('/kpi/:id', authenticateToken, (req, res) => {
     });
 });
 
+app.delete('/kpi/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+
+    // Restrict non-admins to deleting only their own KPIs
+    let query = `DELETE FROM kpis WHERE id = ?`;
+    let queryParams = [id];
+
+    if (req.user.role !== 'admin') {
+        query += ` AND user_id = ?`;
+        queryParams.push(req.user.id);
+    }
+
+    db.query(query, queryParams, (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Database error', error: err });
+        }
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ message: 'KPI not found or unauthorized' });
+        }
+        res.json({ message: `KPI ${id} deleted successfully` });
+    });
+});
+
+
 app.post('/kpi', authenticateToken, async (req, res) => {
     try {
         let { category, kpi, description, target, uom, frequency, status } = req.body;
@@ -211,13 +235,13 @@ app.post('/kpi', authenticateToken, async (req, res) => {
             status = '';
         }
 
-        if (!target) target = 0;
+        const sanitizedTarget = target === '' ? 10 : parseInt(target, 10);
 
         // Using async/await with promisified query
         const query = promisify(db.query).bind(db);
         const result = await query(
             'INSERT INTO kpis (user_id, category, kpi, description, target, uom, frequency, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            [userId, category, kpi, description, target, uom, frequency, status]
+            [userId, category, kpi, description, sanitizedTarget, uom, frequency, status]
         );
 
         res.status(201).json({ message: 'KPI created successfully', id: result.insertId });
