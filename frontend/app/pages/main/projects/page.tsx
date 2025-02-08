@@ -43,7 +43,7 @@ const ProjectsPage = () => {
       ]}
       showRouteButton={true}
       routeBasePath="./pages/main/deliverables/"
-      showDeleteButton={isAdmin}
+      showDeleteButton={isAdmin ?? false}
     />
   );
 };
