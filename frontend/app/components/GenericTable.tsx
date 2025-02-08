@@ -19,8 +19,11 @@ interface Column<T> {
 interface GenericTablePageProps<T extends GenericEntity> {
   title: string;
   endpoint: string;
+  userId?: string;
   columns: Column<T>[];
   allowAddRow?: boolean;
+  showRouteButton?: boolean;
+  routeBasePath?: string;
 }
 
 const GenericTablePage = <T extends GenericEntity>({
@@ -28,6 +31,9 @@ const GenericTablePage = <T extends GenericEntity>({
   endpoint,
   columns,
   allowAddRow = true,
+  showRouteButton,
+  routeBasePath,
+  userId,
 }: GenericTablePageProps<T>) => {
   const [tableData, setTableData] = useState<T[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -35,18 +41,26 @@ const GenericTablePage = <T extends GenericEntity>({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const showRouteButtonValue =
+    showRouteButton !== undefined ? showRouteButton : false;
+  const routeBasePathValue =
+    routeBasePath !== undefined ? routeBasePath : 'route';
+
   const fetchTableData = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
-      const response = await fetch(`http://localhost:3333/${endpoint}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await fetch(
+        `http://localhost:3333/${endpoint}${userId ? `/${userId}` : ''}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
       if (!response.ok) throw new Error(await response.text());
 
       setTableData(await response.json());
@@ -172,6 +186,8 @@ const GenericTablePage = <T extends GenericEntity>({
           headers={columns}
           onEdit={handleEdit}
           onRemove={handleRemoveRow}
+          showRouteButton={showRouteButtonValue}
+          routeBasePath={routeBasePathValue}
         />
       </div>
     </div>

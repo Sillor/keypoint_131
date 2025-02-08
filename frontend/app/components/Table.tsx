@@ -33,7 +33,7 @@ const Table = <T extends { id: number | string }>({
   routeBasePath = 'route',
 }: TableProps<T>) => {
   const [editingRow, setEditingRow] = useState<number | string | null>(null);
-  const router = useRouter(); // Hook for navigation
+  const router = useRouter();
 
   const columns: ColumnDef<T>[] = headers.map((header) => ({
     accessorKey: header.key,

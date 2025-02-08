@@ -8,6 +8,7 @@ import { jwtDecode } from 'jwt-decode';
 const Sidebar: React.FC = () => {
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -15,9 +16,11 @@ const Sidebar: React.FC = () => {
       try {
         interface DecodedToken {
           role: string;
+          id: number;
         }
         const decodedToken: DecodedToken = jwtDecode(token);
         setIsAdmin(decodedToken.role === 'admin');
+        setUserId(decodedToken.id);
       } catch (error) {
         console.error('Invalid token', error);
         setIsAdmin(false);
@@ -74,7 +77,7 @@ const Sidebar: React.FC = () => {
     },
     {
       name: isAdmin ? 'Users' : 'KPI Overview',
-      path: isAdmin ? '/pages/main/users' : '/pages/main/kpi-overview',
+      path: isAdmin ? '/pages/main/users' : `/pages/main/kpi/${userId}`,
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"

@@ -134,11 +134,18 @@ app.delete('/projects/:id', authenticateToken, (req, res) => {
     });
 });
 
-// Retrieve KPI for the authenticated user
-app.get('/kpi', authenticateToken, (req, res) => {
-    const userId = req.user.id;
+// Retrieve KPI by user ID (self or admin access)
+app.get('/kpi/:id', authenticateToken, (req, res) => {
+    const userId = String(req.user.id);
+    const isAdmin = req.user.role === 'admin';
+    const requestedId = String(req.params.id);
 
-    db.query('SELECT * FROM kpis WHERE user_id = ?', [userId], (err, results) => {
+    // Allow users to access their own KPIs or if they are an admin
+    if (userId !== requestedId && !isAdmin) {
+        return res.status(403).json({ message: 'Forbidden: Access denied' });
+    }
+
+    db.query('SELECT * FROM kpis WHERE user_id = ?', [requestedId], (err, results) => {
         if (err) return res.status(500).json({ message: 'Database error', error: err });
 
         if (results.length === 0) {
@@ -148,6 +155,7 @@ app.get('/kpi', authenticateToken, (req, res) => {
         res.json(results);
     });
 });
+
 
 // Update KPI endpoint
 app.put('/kpi/:id', authenticateToken, (req, res) => {
@@ -250,6 +258,79 @@ app.post('/kpi', authenticateToken, async (req, res) => {
         console.error('Database error:', error);
         res.status(500).json({ message: 'Database error', error: error.message });
     }
+});
+
+// Retrieve all users (Admin only)
+app.get('/users', authenticateToken, (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+    }
+
+    db.query('SELECT id, name, email, role, created_at FROM users', (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        res.json(results);
+    });
+});
+
+// Retrieve a specific user (Admin only)
+app.get('/users/:id', authenticateToken, (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const { id } = req.params;
+    db.query('SELECT id, name, email, role, created_at FROM users WHERE id = ?', [id], (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        if (results.length === 0) return res.status(404).json({ message: 'User not found' });
+        res.json(results[0]);
+    });
+});
+
+// Update user details (Admin only)
+app.put('/users/:id', authenticateToken, (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const { id } = req.params;
+    const updates = req.body;
+    const allowedKeys = ['name', 'email', 'role']; // Allowed fields to update
+    const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
+
+    if (updateFields.length === 0) {
+        return res.status(400).json({ message: 'Invalid user field(s) provided' });
+    }
+
+    let query = `UPDATE users SET `;
+    let queryParams = [];
+
+    updateFields.forEach((field, index) => {
+        query += index > 0 ? `, ?? = ?` : `?? = ?`;
+        queryParams.push(field, updates[field]);
+    });
+
+    query += ` WHERE id = ?`;
+    queryParams.push(id);
+
+    db.query(query, queryParams, (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        if (results.affectedRows === 0) return res.status(404).json({ message: 'User not found' });
+        res.json({ message: `User ${id} updated successfully` });
+    });
+});
+
+// Delete user (Admin only)
+app.delete('/users/:id', authenticateToken, (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const { id } = req.params;
+    db.query('DELETE FROM users WHERE id = ?', [id], (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        if (results.affectedRows === 0) return res.status(404).json({ message: 'User not found' });
+        res.json({ message: `User ${id} deleted successfully` });
+    });
 });
 
 
