@@ -61,6 +61,12 @@ const GenericTablePage = <T extends GenericEntity>({
           },
         }
       );
+
+      if (response.status === 404) {
+        setTableData([]); // Allow empty table display if 404
+        return;
+      }
+
       if (!response.ok) throw new Error(await response.text());
 
       setTableData(await response.json());
@@ -118,7 +124,7 @@ const GenericTablePage = <T extends GenericEntity>({
     if (
       await handleRequest(
         'POST',
-        undefined,
+        Number(userId),
         Object.fromEntries(columns.map(({ key }) => [key, '']))
       )
     ) {

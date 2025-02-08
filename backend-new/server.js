@@ -134,28 +134,72 @@ app.delete('/projects/:id', authenticateToken, (req, res) => {
     });
 });
 
-// Retrieve KPI by user ID (self or admin access)
-app.get('/kpi/:id', authenticateToken, (req, res) => {
-    const userId = String(req.user.id);
-    const isAdmin = req.user.role === 'admin';
-    const requestedId = String(req.params.id);
+// Create or Update KPI by user ID (self or admin access)
+app.post('/kpi/:id', authenticateToken, async (req, res) => {
+    try {
+        let { category, kpi, description, target, uom, frequency, status } = req.body;
+        const userId = String(req.user.id);
+        const isAdmin = req.user.role === 'admin';
+        const requestedId = String(req.params.id);
 
-    // Allow users to access their own KPIs or if they are an admin
-    if (userId !== requestedId && !isAdmin) {
-        return res.status(403).json({ message: 'Forbidden: Access denied' });
+        console.log('User ID:', requestedId, 'Category:', category, 'KPI:', kpi, 'Target:', target, 'UOM:', uom, 'Frequency:', frequency, 'Status:', status);
+
+        // Ensure users can only post to their own ID unless they are an admin
+        if (userId !== requestedId && !isAdmin) {
+            return res.status(403).json({ message: 'Forbidden: Access denied' });
+        }
+
+        if (!category && !kpi && !target && !uom && !frequency && status === undefined) {
+            category = '';
+            kpi = '';
+            target = 0;
+            uom = '';
+            frequency = '';
+            status = '';
+        }
+
+        const sanitizedTarget = target === '' ? 10 : parseInt(target, 10);
+
+        // Using async/await with promisified query
+        const query = promisify(db.query).bind(db);
+        const result = await query(
+            'INSERT INTO kpis (user_id, category, kpi, description, target, uom, frequency, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE category = VALUES(category), kpi = VALUES(kpi), description = VALUES(description), target = VALUES(target), uom = VALUES(uom), frequency = VALUES(frequency), status = VALUES(status)',
+            [requestedId, category, kpi, description, sanitizedTarget, uom, frequency, status]
+        );
+
+        res.status(201).json({ message: 'KPI data saved successfully', id: result.insertId });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
     }
+});
 
-    db.query('SELECT * FROM kpis WHERE user_id = ?', [requestedId], (err, results) => {
-        if (err) return res.status(500).json({ message: 'Database error', error: err });
+// Retrieve KPI by user ID (self or admin access)
+app.get('/kpi/:id', authenticateToken, async (req, res) => {
+    try {
+        const userId = String(req.user.id);
+        const isAdmin = req.user.role === 'admin';
+        const requestedId = String(req.params.id);
+
+        // Ensure users can only access their own ID unless they are an admin
+        if (userId !== requestedId && !isAdmin) {
+            return res.status(403).json({ message: 'Forbidden: Access denied' });
+        }
+
+        // Using async/await with promisified query
+        const query = promisify(db.query).bind(db);
+        const results = await query('SELECT * FROM kpis WHERE user_id = ?', [requestedId]);
 
         if (results.length === 0) {
             return res.status(404).json({ message: 'No KPI data found for this user' });
         }
 
         res.json(results);
-    });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
 });
-
 
 // Update KPI endpoint
 app.put('/kpi/:id', authenticateToken, (req, res) => {
