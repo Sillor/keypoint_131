@@ -717,14 +717,41 @@ app.put('/deliverable_details/:project_id/:id', authenticateToken, async (req, r
     query += ` WHERE id = ?`;
     queryParams.push(id);
 
-    db.query(query, queryParams, (err, results) => {
+    db.query(query, queryParams, async (err, results) => {
         if (err) {
             return res.status(500).json({ message: 'Database error', error: err });
         }
         if (results.affectedRows === 0) {
             return res.status(404).json({ message: 'Deliverable detail not found or unauthorized' });
         }
-        res.json({ message: `Deliverable detail ${id} updated successfully` });
+
+        // Fetch project and admin details for email notification
+        const projectQuery = promisify(db.query).bind(db);
+        const projectInfo = await projectQuery(`SELECT name FROM deliverables WHERE id = ?`, [project_id]);
+        const adminInfo = await projectQuery(`SELECT email FROM users WHERE role = 'admin'`);
+
+        if (projectInfo.length > 0 && adminInfo.length > 0) {
+            const projectName = projectInfo[0].name;
+            const adminEmails = adminInfo.map(admin => admin.email);
+            const updateDetails = JSON.stringify(updates, null, 2);
+
+            // Email details
+            const mailOptions = {
+                from: process.env.EMAIL_USER,
+                to: adminEmails,
+                subject: `Deliverable Updated - Project: ${projectName}`,
+                text: `Hello Admins, \n\nA deliverable detail (ID: ${id}) in project "${projectName}" has been updated.\n\nChanges:\n${updateDetails}\n\nBest Regards,\nProject Management System`
+            };
+            transporter.sendMail(mailOptions, (emailErr, info) => {
+                if (emailErr) {
+                    console.error('Error sending email:', emailErr);
+                    return res.status(500).json({ message: 'Update successful, but failed to notify admins' });
+                }
+                res.json({ message: `Deliverable detail ${id} updated successfully, notification sent to admins` });
+            });
+        } else {
+            res.json({ message: `Deliverable detail ${id} updated successfully, but no admins found` });
+        }
     });
 });
 
