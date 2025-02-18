@@ -295,7 +295,7 @@ app.put('/projects/:id', authenticateToken, async (req, res) => {
         const projectCheck = await query(`
             SELECT p.id, p.name FROM projects p
             JOIN project_users pu ON p.id = pu.project_id
-            WHERE p.id = ? AND (pu.user_id = ? OR ? = true)`, 
+            WHERE p.id = ? AND (pu.user_id = ? OR ? = true)`,
             [projectId, userId, isAdmin]
         );
 
@@ -738,54 +738,83 @@ app.get('/deliverable_details/:deliverable_id', authenticateToken, async (req, r
 
 // Update Deliverable Detail
 app.put('/deliverable_details/:project_id/:id', authenticateToken, async (req, res) => {
-    const { project_id, id } = req.params;
-    const updates = req.body;
+    try {
+        const { project_id, id } = req.params;
+        const updates = req.body;
 
-    if (!updates || Object.keys(updates).length === 0) {
-        return res.status(400).json({ message: 'No updates provided' });
-    }
-
-    const allowedKeys = ['task_name', 'category', 'start_date', 'end_date', 'progress', 'status'];
-    const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
-
-    if (updateFields.length === 0) {
-        return res.status(400).json({ message: 'Invalid deliverable detail field(s) provided' });
-    }
-
-    // Ensure user is assigned to the project
-    const permissionCheckQuery = promisify(db.query).bind(db);
-    const permissionCheck = await permissionCheckQuery(`
-        SELECT 1 FROM project_users WHERE project_id = ? AND user_id = ?`,
-        [project_id, req.user.id]
-    );
-
-    if (!req.user.role === 'admin' && permissionCheck.length === 0) {
-        return res.status(403).json({ message: 'Forbidden: You are not assigned to this project' });
-    }
-
-    let query = `UPDATE deliverable_details SET `;
-    let queryParams = [];
-
-    updateFields.forEach((field, index) => {
-        query += index > 0 ? `, ?? = ?` : `?? = ?`;
-        queryParams.push(field, updates[field]);
-    });
-
-    query += ` WHERE id = ?`;
-    queryParams.push(id);
-
-    db.query(query, queryParams, async (err, results) => {
-        if (err) {
-            return res.status(500).json({ message: 'Database error', error: err });
+        if (!updates || Object.keys(updates).length === 0) {
+            return res.status(400).json({ message: 'No updates provided' });
         }
-        if (results.affectedRows === 0) {
+
+        const allowedKeys = ['task_name', 'category', 'start_date', 'end_date', 'progress', 'status'];
+        const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
+
+        if (updateFields.length === 0) {
+            return res.status(400).json({ message: 'Invalid deliverable detail field(s) provided' });
+        }
+
+        // Ensure user is assigned to the project
+        const query = promisify(db.query).bind(db);
+        const permissionCheck = await query(
+            `SELECT 1 FROM project_users WHERE project_id = ? AND user_id = ?`,
+            [project_id, req.user.id]
+        );
+
+        if (!req.user.role === 'admin' && permissionCheck.length === 0) {
+            return res.status(403).json({ message: 'Forbidden: You are not assigned to this project' });
+        }
+
+        // Update deliverable detail
+        let updateQuery = `UPDATE deliverable_details SET `;
+        let queryParams = [];
+
+        updateFields.forEach((field, index) => {
+            updateQuery += index > 0 ? `, ?? = ?` : `?? = ?`;
+            queryParams.push(field, updates[field]);
+        });
+
+        updateQuery += ` WHERE id = ?`;
+        queryParams.push(id);
+
+        const updateResult = await query(updateQuery, queryParams);
+
+        if (updateResult.affectedRows === 0) {
             return res.status(404).json({ message: 'Deliverable detail not found or unauthorized' });
         }
 
+        // Get deliverable_id from the updated deliverable detail
+        const deliverableDetail = await query(`SELECT deliverable_id FROM deliverable_details WHERE id = ?`, [id]);
+        if (deliverableDetail.length === 0) {
+            return res.status(404).json({ message: 'Deliverable detail not found' });
+        }
+
+        const deliverableId = deliverableDetail[0].deliverable_id;
+
+        // Fetch all deliverable_details progress for the given deliverable (without is_deleted check)
+        const progressResults = await query(
+            `SELECT progress FROM deliverable_details WHERE deliverable_id = ?`,
+            [deliverableId]
+        );
+
+        const allProgress = progressResults.map(row => row.progress);
+
+        let deliverableStatus;
+        if (allProgress.length === 0) {
+            deliverableStatus = 'Not started'; // No deliverable details mean not started
+        } else if (allProgress.every(progress => progress === '100%')) {
+            deliverableStatus = 'Completed';
+        } else if (allProgress.every(progress => progress === '0%')) {
+            deliverableStatus = 'Not started';
+        } else {
+            deliverableStatus = 'In Progress';
+        }
+
+        // Update deliverable status
+        await query(`UPDATE deliverables SET status = ? WHERE id = ?`, [deliverableStatus, deliverableId]);
+
         // Fetch project and admin details for email notification
-        const projectQuery = promisify(db.query).bind(db);
-        const projectInfo = await projectQuery(`SELECT name FROM deliverables WHERE id = ?`, [project_id]);
-        const adminInfo = await projectQuery(`SELECT email FROM users WHERE role = 'admin'`);
+        const projectInfo = await query(`SELECT name FROM deliverables WHERE id = ?`, [deliverableId]);
+        const adminInfo = await query(`SELECT email FROM users WHERE role = 'admin'`);
 
         if (projectInfo.length > 0 && adminInfo.length > 0) {
             const projectName = projectInfo[0].name;
@@ -799,18 +828,23 @@ app.put('/deliverable_details/:project_id/:id', authenticateToken, async (req, r
                 subject: `Deliverable Updated - Project: ${projectName}`,
                 text: `Hello Admins, \n\nA deliverable detail (ID: ${id}) in project "${projectName}" has been updated.\n\nChanges:\n${updateDetails}\n\nBest Regards,\nProject Management System`
             };
+
             transporter.sendMail(mailOptions, (emailErr, info) => {
                 if (emailErr) {
                     console.error('Error sending email:', emailErr);
                     return res.status(500).json({ message: 'Update successful, but failed to notify admins' });
                 }
-                res.json({ message: `Deliverable detail ${id} updated successfully, notification sent to admins` });
+                res.json({ message: `Deliverable detail ${id} updated successfully, Deliverable status updated to ${deliverableStatus}, notification sent to admins` });
             });
         } else {
-            res.json({ message: `Deliverable detail ${id} updated successfully, but no admins found` });
+            res.json({ message: `Deliverable detail ${id} updated successfully, Deliverable status updated to ${deliverableStatus}, but no admins found` });
         }
-    });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
 });
+
 
 // Delete Deliverable Detail
 app.delete('/deliverable_details/:project_id/:id', authenticateToken, async (req, res) => {
@@ -919,12 +953,14 @@ app.put('/deliverables/:id', authenticateToken, async (req, res) => {
 
         const query = promisify(db.query).bind(db);
 
-        // Check if the deliverable exists
-        const deliverableCheck = await query(`SELECT id FROM deliverables WHERE id = ?`, [id]);
+        // Check if the deliverable exists and get project_id
+        const deliverableCheck = await query(`SELECT id, project_id FROM deliverables WHERE id = ?`, [id]);
 
         if (deliverableCheck.length === 0) {
             return res.status(404).json({ message: 'Deliverable not found' });
         }
+
+        const projectId = deliverableCheck[0].project_id;
 
         let updateQuery = `UPDATE deliverables SET `;
         let queryParams = [];
@@ -943,13 +979,34 @@ app.put('/deliverables/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ message: 'Deliverable not found or no changes made' });
         }
 
-        res.json({ message: `Deliverable ${id} updated successfully` });
+        // Check the progress of all non-deleted deliverables for the project
+        const progressResults = await query(
+            `SELECT progress FROM deliverables WHERE project_id = ? AND is_deleted = 0`,
+            [projectId]
+        );
+
+        const allProgress = progressResults.map(row => row.progress);
+
+        let projectStatus;
+        if (allProgress.length === 0) {
+            projectStatus = 'Not started'; // No active deliverables mean the project hasn't started
+        } else if (allProgress.every(progress => progress === '100%')) {
+            projectStatus = 'Completed';
+        } else if (allProgress.every(progress => (progress === '0%' || progress === null))) {
+            projectStatus = 'Not started';
+        } else {
+            projectStatus = 'In Progress';
+        }
+
+        // Update project status
+        await query(`UPDATE projects SET status = ? WHERE id = ?`, [projectStatus, projectId]);
+
+        res.json({ message: `Deliverable ${id} updated successfully, Project status updated to ${projectStatus}` });
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ message: 'Database error', error: error.message });
     }
 });
-
 
 // Add a new Deliverable (Admin only)
 app.post('/deliverables/:id', authenticateToken, async (req, res) => {
