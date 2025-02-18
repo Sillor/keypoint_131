@@ -1,12 +1,11 @@
 'use client';
 
-import { useParams } from 'next/navigation';
 import GenericTablePage from '../../../components/GenericTable';
 import { jwtDecode } from 'jwt-decode';
 import { useState, useEffect } from 'react';
 
 const ProjectsPage = () => {
-  const [userId, setUserId] = useState<number | null>(null);
+  const [, setUserId] = useState<number | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -23,9 +22,13 @@ const ProjectsPage = () => {
       } catch (error) {
         console.error('Invalid token', error);
         setIsAdmin(false);
+        localStorage.removeItem('token');
+        window.location.href = '/pages/auth/login';
       }
     } else {
       setIsAdmin(false);
+      localStorage.removeItem('token');
+      window.location.href = '/pages/auth/login';
     }
   }, []);
 

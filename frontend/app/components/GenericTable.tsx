@@ -50,7 +50,7 @@ const GenericTablePage = <T extends GenericEntity>({
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
-      let response = await fetch(
+      const response = await fetch(
         `http://localhost:3333/${endpoint}${userId ? `/${userId}` : ''}`,
         {
           headers: {
@@ -84,7 +84,7 @@ const GenericTablePage = <T extends GenericEntity>({
       const token = localStorage.getItem('token');
       if (!token) throw new Error('No authentication token found');
 
-      let url =
+      const url =
         endpoint === 'deliverable_details'
           ? `http://localhost:3333/${endpoint}/${userId}/${id}/`
           : `http://localhost:3333/${endpoint}${id ? `/${id}` : ''}`;
@@ -108,7 +108,7 @@ const GenericTablePage = <T extends GenericEntity>({
   const debouncedHandleRequest = useCallback(
     debounce(async (id: number, key: keyof T, value: string) => {
       await handleRequest('PUT', id, { [key]: value });
-    }, 500),
+    }, 1500),
     []
   );
 

@@ -764,6 +764,31 @@ app.put('/deliverable_details/:project_id/:id', authenticateToken, async (req, r
             return res.status(403).json({ message: 'Forbidden: You are not assigned to this project' });
         }
 
+        // Determine the status of the deliverable detail based on progress
+        if (updates.progress) {
+            if (updates.progress === '100%') {
+                updates.status = 'Completed';
+            } else if (updates.progress === '0%') {
+                updates.status = 'Not started';
+            } else {
+                updates.status = 'In Progress';
+            }
+
+            // Ensure 'status' is included in updateFields
+            if (!updateFields.includes('status')) {
+                updateFields.push('status');
+            }
+        }
+
+        // Ensure 'progress' is included in updateFields if not already
+        if (!updateFields.includes('progress')) {
+            updateFields.push('progress');
+        }
+
+        // Debugging
+        console.log("Final Update Fields:", updateFields);
+        console.log("Final Updates Object:", updates);
+
         // Update deliverable detail
         let updateQuery = `UPDATE deliverable_details SET `;
         let queryParams = [];
@@ -962,6 +987,22 @@ app.put('/deliverables/:id', authenticateToken, async (req, res) => {
 
         const projectId = deliverableCheck[0].project_id;
 
+        // ✅ Update status based on progress
+        if (updates.progress) {
+            if (updates.progress === '100%') {
+                updates.status = 'Completed';
+            } else if (updates.progress === '0%') {
+                updates.status = 'Not started';
+            } else {
+                updates.status = 'In Progress';
+            }
+
+            // Ensure 'status' is included in updateFields if progress is being updated
+            if (!updateFields.includes('status')) {
+                updateFields.push('status');
+            }
+        }
+
         let updateQuery = `UPDATE deliverables SET `;
         let queryParams = [];
 
@@ -979,7 +1020,7 @@ app.put('/deliverables/:id', authenticateToken, async (req, res) => {
             return res.status(404).json({ message: 'Deliverable not found or no changes made' });
         }
 
-        // Check the progress of all non-deleted deliverables for the project
+        // ✅ Check the progress of all non-deleted deliverables for the project
         const progressResults = await query(
             `SELECT progress FROM deliverables WHERE project_id = ? AND is_deleted = 0`,
             [projectId]
@@ -998,15 +1039,17 @@ app.put('/deliverables/:id', authenticateToken, async (req, res) => {
             projectStatus = 'In Progress';
         }
 
-        // Update project status
+        // ✅ Update project status
         await query(`UPDATE projects SET status = ? WHERE id = ?`, [projectStatus, projectId]);
 
         res.json({ message: `Deliverable ${id} updated successfully, Project status updated to ${projectStatus}` });
+
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ message: 'Database error', error: error.message });
     }
 });
+
 
 // Add a new Deliverable (Admin only)
 app.post('/deliverables/:id', authenticateToken, async (req, res) => {
