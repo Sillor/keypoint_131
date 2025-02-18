@@ -44,7 +44,7 @@ const DeliverablesPage = () => {
         { key: 'category', label: 'Category', editable: isAdmin },
         { key: 'start_date', label: 'Start Date', editable: isAdmin },
         { key: 'end_date', label: 'End Date', editable: isAdmin },
-        { key: 'progress', label: 'Progress', editable: true },
+        { key: 'progress', label: 'Progress', editable: isAdmin },
         { key: 'status', label: 'Status', editable: isAdmin },
       ]}
       showRouteButton={true}

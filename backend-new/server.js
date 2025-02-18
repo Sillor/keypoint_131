@@ -815,27 +815,37 @@ app.put('/deliverable_details/:project_id/:id', authenticateToken, async (req, r
 
         const deliverableId = deliverableDetail[0].deliverable_id;
 
-        // Fetch all deliverable_details progress for the given deliverable (without is_deleted check)
+        // Fetch all deliverable_details progress for the given deliverable
         const progressResults = await query(
             `SELECT progress FROM deliverable_details WHERE deliverable_id = ?`,
             [deliverableId]
         );
 
-        const allProgress = progressResults.map(row => row.progress);
+        // Convert progress values from "XX%" to numbers
+        const allProgress = progressResults
+            .map(row => parseFloat(row.progress.replace('%', '')))
+            .filter(value => !isNaN(value)); // Ensure valid numbers
 
+        // Calculate average progress
+        const totalProgress = allProgress.reduce((acc, curr) => acc + curr, 0);
+        const averageProgress = allProgress.length > 0 ? (totalProgress / allProgress.length) : 0;
+
+        // Format back to string with '%'
+        const formattedProgress = `${averageProgress.toFixed(2)}%`;
+
+        // Determine deliverable status
         let deliverableStatus;
-        if (allProgress.length === 0) {
-            deliverableStatus = 'Not started'; // No deliverable details mean not started
-        } else if (allProgress.every(progress => progress === '100%')) {
-            deliverableStatus = 'Completed';
-        } else if (allProgress.every(progress => progress === '0%')) {
+        if (allProgress.length === 0 || averageProgress === 0) {
             deliverableStatus = 'Not started';
+        } else if (averageProgress === 100) {
+            deliverableStatus = 'Completed';
         } else {
             deliverableStatus = 'In Progress';
         }
 
-        // Update deliverable status
-        await query(`UPDATE deliverables SET status = ? WHERE id = ?`, [deliverableStatus, deliverableId]);
+        // Update deliverable progress and status
+        await query(`UPDATE deliverables SET progress = ?, status = ? WHERE id = ?`, [formattedProgress, deliverableStatus, deliverableId]);
+
 
         // Fetch project and admin details for email notification
         const projectInfo = await query(`SELECT name FROM deliverables WHERE id = ?`, [deliverableId]);
