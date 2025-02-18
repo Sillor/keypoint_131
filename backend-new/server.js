@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
 const { promisify } = require('util');
-const { start } = require('repl');
+const nodemailer = require('nodemailer');
 
 dotenv.config();
 
@@ -23,6 +23,14 @@ const db = mysql.createConnection({
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
     multipleStatements: true
+});
+
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
 });
 
 db.connect(err => {
@@ -55,24 +63,59 @@ app.post('/register', (req, res) => {
     const { name, email, password, role } = req.body;
     bcrypt.hash(password, 10, (err, hash) => {
         if (err) return res.status(500).json(err);
+
         db.query('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
             [name, email, hash, role || 'user'],
             (err, results) => {
                 if (err) return res.status(500).json(err);
-                res.status(201).json({ message: 'User registered successfully' });
+
+                // Retrieve all admin emails
+                db.query('SELECT email FROM users WHERE role = "admin"', (err, admins) => {
+                    if (err) return res.status(500).json(err);
+
+                    const adminEmails = admins.map(admin => admin.email);
+                    const confirmationLink = `http://localhost:3000/pages/confirm-user/${results.insertId}`;
+
+                    if (adminEmails.length > 0) {
+                        const mailOptions = {
+                            from: process.env.EMAIL_USER,
+                            to: adminEmails,
+                            subject: 'New User Registration Confirmation',
+                            text: `A new user has registered.\n\nName: ${name}\nEmail: ${email}\nRole: ${role || 'user'}\n\nConfirm the registration here: ${confirmationLink}`
+                        };
+
+                        transporter.sendMail(mailOptions, (err, info) => {
+                            if (err) {
+                                console.error('Error sending email:', err);
+                                return res.status(500).json({ message: 'User registered, but email notification failed' });
+                            }
+                            res.status(201).json({ message: 'User registered successfully, confirmation email sent to admins' });
+                        });
+                    } else {
+                        res.status(201).json({ message: 'User registered successfully, but no admins found' });
+                    }
+                });
             }
         );
     });
 });
 
+
 // User Authentication (Login)
 app.post('/login', (req, res) => {
     const { email, password } = req.body;
+
     db.query('SELECT * FROM users WHERE email = ?', [email], (err, results) => {
         if (err) return res.status(500).json(err);
         if (results.length === 0) return res.status(401).json({ message: 'User not found' });
 
         const user = results[0];
+
+        // Check if the user is confirmed
+        if (!user.confirmed) {
+            return res.status(403).json({ message: 'Account not confirmed. Please wait for admin approval.' });
+        }
+
         bcrypt.compare(password, user.password_hash, (err, isMatch) => {
             if (err) return res.status(500).json(err);
             if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
@@ -83,6 +126,25 @@ app.post('/login', (req, res) => {
     });
 });
 
+// Admin Confirms a User
+app.post('/confirm-user/:id', authenticateToken, (req, res) => {
+    const userId = req.params.id;
+
+    // Ensure only admins can perform this action
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Access denied. Admins only.' });
+    }
+
+    db.query('UPDATE users SET confirmed = 1 WHERE id = ?', [userId], (err, result) => {
+        if (err) return res.status(500).json({ message: 'Database error' });
+
+        if (result.affectedRows === 0) {
+            return res.status(400).json({ message: 'User not found or already confirmed' });
+        }
+
+        res.json({ message: 'User confirmed successfully!' });
+    });
+});
 
 
 
@@ -347,14 +409,12 @@ app.get('/kpi/:id', authenticateToken, async (req, res) => {
         const isAdmin = req.user.role === 'admin';
         const requestedId = String(req.params.id);
 
-        // Ensure users can only access their own ID unless they are an admin
         if (userId !== requestedId && !isAdmin) {
             return res.status(403).json({ message: 'Forbidden: Access denied' });
         }
 
-        // Using async/await with promisified query
         const query = promisify(db.query).bind(db);
-        const results = await query('SELECT * FROM kpis WHERE user_id = ?', [requestedId]);
+        const results = await query('SELECT * FROM kpis WHERE user_id = ? AND is_deleted = 0', [requestedId]);
 
         if (results.length === 0) {
             return res.status(404).json({ message: 'No KPI data found for this user' });
@@ -413,27 +473,30 @@ app.put('/kpi/:id', authenticateToken, (req, res) => {
     });
 });
 
-app.delete('/kpi/:id', authenticateToken, (req, res) => {
-    const { id } = req.params;
+// Soft Delete KPI
+app.delete('/kpi/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        let query = `UPDATE kpis SET is_deleted = 1 WHERE id = ?`;
+        let queryParams = [id];
 
-    // Restrict non-admins to deleting only their own KPIs
-    let query = `DELETE FROM kpis WHERE id = ?`;
-    let queryParams = [id];
-
-    if (req.user.role !== 'admin') {
-        query += ` AND user_id = ?`;
-        queryParams.push(req.user.id);
-    }
-
-    db.query(query, queryParams, (err, results) => {
-        if (err) {
-            return res.status(500).json({ message: 'Database error', error: err });
+        if (req.user.role !== 'admin') {
+            query += ` AND user_id = ?`;
+            queryParams.push(req.user.id);
         }
+
+        const dbQuery = promisify(db.query).bind(db);
+        const results = await dbQuery(query, queryParams);
+
         if (results.affectedRows === 0) {
             return res.status(404).json({ message: 'KPI not found or unauthorized' });
         }
-        res.json({ message: `KPI ${id} deleted successfully` });
-    });
+
+        res.json({ message: `KPI ${id} marked as deleted successfully` });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
 });
 
 
@@ -723,7 +786,7 @@ app.delete('/deliverable_details/:project_id/:id', authenticateToken, async (req
 
 
 
-// Retrieve Deliverables by Project ID
+// Retrieve Deliverables by Project ID (Exclude Soft Deleted)
 app.get('/deliverables/:project_id', authenticateToken, async (req, res) => {
     try {
         const { project_id } = req.params;
@@ -741,7 +804,7 @@ app.get('/deliverables/:project_id', authenticateToken, async (req, res) => {
         }
 
         const query = promisify(db.query).bind(db);
-        const results = await query(`SELECT * FROM deliverables WHERE project_id = ?`, [project_id]);
+        const results = await query(`SELECT * FROM deliverables WHERE project_id = ? AND is_deleted = 0`, [project_id]);
 
         if (results.length === 0) {
             return res.status(404).json({ message: 'No deliverables found for this project' });
@@ -851,7 +914,7 @@ app.post('/deliverables/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Delete Deliverable
+// Soft Delete Deliverable
 app.delete('/deliverables/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
@@ -870,13 +933,13 @@ app.delete('/deliverables/:id', authenticateToken, async (req, res) => {
         }
 
         const query = promisify(db.query).bind(db);
-        const results = await query(`DELETE FROM deliverables WHERE id = ?`, [id]);
+        const results = await query(`UPDATE deliverables SET is_deleted = 1 WHERE id = ?`, [id]);
 
         if (results.affectedRows === 0) {
             return res.status(404).json({ message: 'Deliverable not found or unauthorized' });
         }
 
-        res.json({ message: `Deliverable ${id} deleted successfully` });
+        res.json({ message: `Deliverable ${id} marked as deleted successfully` });
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ message: 'Database error', error: error.message });
