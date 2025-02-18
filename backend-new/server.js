@@ -270,7 +270,7 @@ app.get('/projects/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Update a project (admin or assigned users)
+// Update a project (admin or assigned users) with email notifications to admins
 app.put('/projects/:id', authenticateToken, async (req, res) => {
     try {
         const projectId = req.params.id;
@@ -293,9 +293,11 @@ app.put('/projects/:id', authenticateToken, async (req, res) => {
 
         // Check if user has access to this project
         const projectCheck = await query(`
-            SELECT p.id FROM projects p
+            SELECT p.id, p.name FROM projects p
             JOIN project_users pu ON p.id = pu.project_id
-            WHERE p.id = ? AND (pu.user_id = ? OR ? = true)`, [projectId, userId, isAdmin]);
+            WHERE p.id = ? AND (pu.user_id = ? OR ? = true)`, 
+            [projectId, userId, isAdmin]
+        );
 
         if (projectCheck.length === 0) {
             return res.status(403).json({ message: 'Unauthorized to update this project' });
@@ -315,7 +317,32 @@ app.put('/projects/:id', authenticateToken, async (req, res) => {
 
         await query(queryStr, queryParams);
 
-        res.json({ message: `Project ${projectId} updated successfully` });
+        // Fetch admin emails
+        const adminInfo = await query(`SELECT email FROM users WHERE role = 'admin'`);
+
+        if (adminInfo.length > 0) {
+            const projectName = projectCheck[0].name;
+            const adminEmails = adminInfo.map(admin => admin.email);
+            const updateDetails = JSON.stringify(updates, null, 2);
+
+            // Email details
+            const mailOptions = {
+                from: process.env.EMAIL_USER,
+                to: adminEmails,
+                subject: `Project Updated - ${projectName}`,
+                text: `Hello Admins, \n\nThe project "${projectName}" has been updated.\n\nChanges:\n${updateDetails}\n\nBest Regards,\nProject Management System`
+            };
+
+            transporter.sendMail(mailOptions, (emailErr, info) => {
+                if (emailErr) {
+                    console.error('Error sending email:', emailErr);
+                    return res.status(500).json({ message: 'Project updated, but failed to notify admins' });
+                }
+                res.json({ message: `Project ${projectId} updated successfully, notification sent to admins` });
+            });
+        } else {
+            res.json({ message: `Project ${projectId} updated successfully, but no admins found` });
+        }
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ message: 'Database error', error: error.message });
@@ -427,8 +454,8 @@ app.get('/kpi/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Update KPI endpoint
-app.put('/kpi/:id', authenticateToken, (req, res) => {
+// Update KPI endpoint with email notifications to admins
+app.put('/kpi/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
@@ -436,8 +463,7 @@ app.put('/kpi/:id', authenticateToken, (req, res) => {
         return res.status(400).json({ message: 'No updates provided' });
     }
 
-    const allowedKeys = ['category', 'kpi', 'description', 'target', 'uom', 'frequency', 'status'
-    ]; // Define valid fields
+    const allowedKeys = ['category', 'kpi', 'description', 'target', 'uom', 'frequency', 'status'];
     const updateFields = Object.keys(updates).filter(key => allowedKeys.includes(key));
 
     if (updateFields.length === 0) {
@@ -462,14 +488,45 @@ app.put('/kpi/:id', authenticateToken, (req, res) => {
         queryParams.push(req.user.id);
     }
 
-    db.query(query, queryParams, (err, results) => {
+    db.query(query, queryParams, async (err, results) => {
         if (err) {
             return res.status(500).json({ message: 'Database error', error: err });
         }
         if (results.affectedRows === 0) {
             return res.status(404).json({ message: 'KPI not found or unauthorized' });
         }
-        res.json({ message: `KPI ${id} updated successfully` });
+
+        // Fetch KPI details and admin emails
+        const kpiQuery = promisify(db.query).bind(db);
+        const kpiInfo = await kpiQuery(`SELECT kpi, category FROM kpis WHERE id = ?`, [id]);
+        const adminInfo = await kpiQuery(`SELECT email FROM users WHERE role = 'admin'`);
+        const userNameResult = await kpiQuery(`SELECT name FROM users WHERE id = ?`, [req.user.id]);
+        const userName = userNameResult.length > 0 ? userNameResult[0].name : 'Unknown User';
+
+        if (kpiInfo.length > 0 && adminInfo.length > 0) {
+            const kpiName = kpiInfo[0].kpi;
+            const category = kpiInfo[0].category;
+            const adminEmails = adminInfo.map(admin => admin.email);
+            const updateDetails = JSON.stringify(updates, null, 2);
+
+            // Email details
+            const mailOptions = {
+                from: process.env.EMAIL_USER,
+                to: adminEmails,
+                subject: `KPI Updated by user ${userName} (ID: ${req.user.id})`,
+                text: `Hello Admins, \n\nThe KPI "${kpiName}" in category "${category}" has been updated.\n\nChanges:\n${updateDetails}\n\nBest Regards,\nKPI Management System`
+            };
+
+            transporter.sendMail(mailOptions, (emailErr, info) => {
+                if (emailErr) {
+                    console.error('Error sending email:', emailErr);
+                    return res.status(500).json({ message: 'KPI updated, but failed to notify admins' });
+                }
+                res.json({ message: `KPI ${id} updated successfully, notification sent to admins` });
+            });
+        } else {
+            res.json({ message: `KPI ${id} updated successfully, but no admins found` });
+        }
     });
 });
 
