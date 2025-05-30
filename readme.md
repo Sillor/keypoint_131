@@ -2,6 +2,10 @@
 
 KeyPoint is a web application designed to help companies manage their projects efficiently. It enables tracking of projects, deliverables within projects, and tasks within deliverables. Additionally, it provides KPI tracking for employees, allowing them to update their KPIs while administrators can review and manage performance metrics.
 
+![Screenshot of the projects table](projects-screenshot.png)
+
+![Screenshot of the KPI table](kpi-screenshot.png)
+
 ## Table of Contents
 
 - [KeyPoint](#keypoint)
